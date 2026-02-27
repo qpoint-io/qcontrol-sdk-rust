@@ -1,0 +1,14 @@
+[package]
+name = "qcontrol"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for qcontrol plugins"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.70"
