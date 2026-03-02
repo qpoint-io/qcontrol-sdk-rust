@@ -1,0 +1,36 @@
+
+  =============================================
+   qcontrol SDK for Rust - Demo Environment
+  =============================================
+
+  Build a plugin:
+
+    cd examples/file-logger
+    cargo build --release
+
+  Build all example plugins:
+
+    cd examples
+    make build
+
+  Bundle plugins into a single library:
+
+    cd examples
+    qcontrol bundle -c bundle.toml
+
+  Run a command with qcontrol instrumentation:
+
+    qcontrol wrap --bundle <bundle.so> -- <command>
+
+  Example - instrument 'cat' with bundled plugins:
+
+    cd examples
+    qcontrol bundle -c bundle.toml
+    qcontrol wrap --bundle rust-plugins.so -- cat /etc/hostname
+
+  Useful commands:
+
+    qcontrol --help               # full CLI help
+    qcontrol wrap --help          # instrumentation options
+    qcontrol bundle --help        # bundling options
+

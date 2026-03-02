@@ -3,11 +3,13 @@
 # SDK Detection: Auto-generates .cargo/config.toml to use local SDK in monorepo
 # Build:         make build (builds all plugins)
 # Clean:         make clean (removes artifacts and config)
+# Dev container:  make dev
 
 LOCAL_SDK := ..
 CARGO_CONFIG := .cargo/config.toml
+IMAGE_NAME := qcontrol-sdk-rust-demo
 
-.PHONY: all setup-sdk build dist clean
+.PHONY: all setup-sdk build dist clean docker-build dev
 
 all: build
 
@@ -34,3 +36,9 @@ clean:
 	cargo clean
 	rm -rf .cargo
 	rm -rf file-logger/dist access-control/dist byte-counter/dist content-filter/dist text-transform/dist
+
+docker-build:
+	docker build -t $(IMAGE_NAME) -f Dockerfile ..
+
+dev: docker-build
+	docker run --rm -it $(IMAGE_NAME)
