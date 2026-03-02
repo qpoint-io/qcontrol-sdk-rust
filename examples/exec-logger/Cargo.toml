@@ -1,0 +1,12 @@
+[package]
+name = "exec-logger"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# cdylib: shared library for dynamic loading (QCONTROL_PLUGINS)
+# staticlib: static archive for bundling (qcontrol bundle)
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+qcontrol = { workspace = true }
