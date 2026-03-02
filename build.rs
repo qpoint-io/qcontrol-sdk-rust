@@ -18,22 +18,21 @@ fn main() {
     // Tell cargo to re-run if the C headers change
     println!("cargo:rerun-if-changed={}/qcontrol/common.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/file.h", c_sdk_include);
+    println!("cargo:rerun-if-changed={}/qcontrol/plugin.h", c_sdk_include);
     println!("cargo:rerun-if-changed=build.rs");
 
     // Generate bindings
     let bindings = bindgen::Builder::default()
-        // Include the main header that pulls in everything
-        .header(format!("{}/qcontrol/common.h", c_sdk_include))
-        .header(format!("{}/qcontrol/file.h", c_sdk_include))
+        // Include plugin.h which pulls in common.h and file.h
+        .header(format!("{}/qcontrol/plugin.h", c_sdk_include))
         // Only generate bindings for qcontrol types
         .allowlist_type("qcontrol_.*")
         .allowlist_var("QCONTROL_.*")
+        .allowlist_function("qcontrol_buffer_.*")
         // Use core types for no_std compatibility
         .use_core()
-        // Generate rustified enums where possible
-        .rustified_enum("qcontrol_status_t")
-        .rustified_enum("qcontrol_phase_t")
-        .rustified_enum("qcontrol_error_t")
+        // Generate rustified enums
+        .rustified_enum("qcontrol_file_action_type_t")
         // Don't generate layout tests (they require std)
         .layout_tests(false)
         // Parse the headers

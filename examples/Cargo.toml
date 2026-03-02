@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["file-logger", "access-control", "byte-counter", "content-filter", "text-transform"]
+
+[workspace.dependencies]
+qcontrol = { git = "https://github.com/qpoint-io/qcontrol-sdk-rust" }
