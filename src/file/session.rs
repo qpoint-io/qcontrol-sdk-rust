@@ -161,6 +161,12 @@ pub struct FileSession {
     pub(crate) read: Option<Box<FileRwConfig>>,
     /// Write transform configuration.
     pub(crate) write: Option<Box<FileRwConfig>>,
+    /// Redirect to different path.
+    pub(crate) set_path: Option<std::ffi::CString>,
+    /// Override open flags (-1 = unchanged).
+    pub(crate) set_flags: Option<i32>,
+    /// Override file mode (0 = unchanged).
+    pub(crate) set_mode: Option<u32>,
 }
 
 impl FileSession {
@@ -201,8 +207,23 @@ impl FileSession {
             None => std::ptr::null_mut(),
         };
 
+        // Handle set_path - leak the CString
+        let set_path_ptr = match self.set_path {
+            Some(path) => Box::into_raw(Box::new(path)) as *const c_char,
+            None => std::ptr::null(),
+        };
+
+        // Handle set_flags
+        let set_flags = self.set_flags.unwrap_or(ffi::QCONTROL_FILE_FLAGS_UNCHANGED);
+
+        // Handle set_mode
+        let set_mode = self.set_mode.unwrap_or(0);
+
         ffi::qcontrol_file_session_t {
             state: state_ptr,
+            set_path: set_path_ptr,
+            set_flags,
+            set_mode,
             read: read_ptr,
             write: write_ptr,
         }
@@ -225,6 +246,9 @@ pub struct FileSessionBuilder {
     state: Option<Box<dyn Any + Send>>,
     read: Option<Box<FileRwConfig>>,
     write: Option<Box<FileRwConfig>>,
+    set_path: Option<std::ffi::CString>,
+    set_flags: Option<i32>,
+    set_mode: Option<u32>,
 }
 
 impl FileSessionBuilder {
@@ -253,12 +277,39 @@ impl FileSessionBuilder {
         self
     }
 
+    /// Redirect opens to a different path.
+    ///
+    /// When set, file opens will be redirected to this path instead.
+    pub fn set_path(mut self, path: &str) -> Self {
+        self.set_path = std::ffi::CString::new(path).ok();
+        self
+    }
+
+    /// Override the open flags.
+    ///
+    /// When set, this value replaces the original open flags.
+    pub fn set_flags(mut self, flags: i32) -> Self {
+        self.set_flags = Some(flags);
+        self
+    }
+
+    /// Override the file mode.
+    ///
+    /// When set, this value replaces the original file mode for O_CREAT.
+    pub fn set_mode(mut self, mode: u32) -> Self {
+        self.set_mode = Some(mode);
+        self
+    }
+
     /// Build the session.
     pub fn build(self) -> FileSession {
         FileSession {
             state: self.state,
             read: self.read,
             write: self.write,
+            set_path: self.set_path,
+            set_flags: self.set_flags,
+            set_mode: self.set_mode,
         }
     }
 }

@@ -1,7 +1,7 @@
 //! qcontrol SDK for Rust
 //!
 //! This crate provides idiomatic Rust bindings for the qcontrol plugin SDK,
-//! enabling you to write file operation filters in safe Rust.
+//! enabling you to write file, exec, and network operation filters in safe Rust.
 //!
 //! # Quick Start
 //!
@@ -23,15 +23,35 @@
 //!
 //! # Plugin Model
 //!
-//! The new SDK uses a descriptor-based model where plugins export a single
+//! The SDK uses a descriptor-based model where plugins export a single
 //! `qcontrol_plugin` symbol containing all callbacks:
 //!
+//! ## Lifecycle
 //! - **on_init** - Called after plugin load (optional)
 //! - **on_cleanup** - Called before plugin unload (optional)
+//!
+//! ## File Operations
 //! - **on_file_open** - Called after open() syscall
 //! - **on_file_read** - Called after read() syscall
 //! - **on_file_write** - Called before write() syscall
 //! - **on_file_close** - Called after close() syscall
+//!
+//! ## Exec Operations (v1 spec)
+//! - **on_exec** - Called before exec syscall
+//! - **on_exec_stdin** - Called before data is written to child stdin
+//! - **on_exec_stdout** - Called after data is read from child stdout
+//! - **on_exec_stderr** - Called after data is read from child stderr
+//! - **on_exec_exit** - Called when child process exits
+//!
+//! ## Network Operations (v1 spec)
+//! - **on_net_connect** - Called after connect() completes
+//! - **on_net_accept** - Called after accept() completes
+//! - **on_net_tls** - Called when TLS handshake completes
+//! - **on_net_domain** - Called when domain name is discovered
+//! - **on_net_protocol** - Called when protocol is detected
+//! - **on_net_send** - Called before data is sent
+//! - **on_net_recv** - Called after data is received
+//! - **on_net_close** - Called when connection is closed
 //!
 //! # Sessions and State
 //!
@@ -75,6 +95,8 @@ mod error;
 mod plugin;
 pub mod buffer;
 pub mod file;
+pub mod exec;
+pub mod net;
 mod logger;
 
 // Re-export public API
@@ -90,6 +112,21 @@ pub use file::{
     FileSessionBuilder, FileState, FileTransformFn, FileWriteEvent, FileWriteFn,
 };
 
+// Re-export exec module types at top level for convenience
+pub use exec::{
+    ExecAction, ExecContext, ExecEvent, ExecExitFn, ExecFn, ExecPattern, ExecResult, ExecRwConfig,
+    ExecSession, ExecSessionBuilder, ExecStderrFn, ExecStdinFn, ExecStdoutFn, ExecTransformFn,
+    ExitEvent, StderrEvent, StdinEvent, StdoutEvent,
+};
+
+// Re-export net module types at top level for convenience
+pub use net::{
+    AcceptEvent, AcceptFn, AcceptResult, CloseEvent as NetCloseEvent, CloseFn as NetCloseFn,
+    ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
+    NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
+    ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+};
+
 /// Prelude module - import all commonly used types.
 ///
 /// ```rust,ignore
@@ -99,12 +136,29 @@ pub mod prelude {
     pub use crate::buffer::Buffer;
     pub use crate::error::Error;
     pub use crate::export_plugin;
+    pub use crate::logger::Logger;
+    pub use crate::patterns;
+    pub use crate::PluginBuilder;
+
+    // File types
     pub use crate::file::{
         FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpenEvent, FileOpenFn,
         FileOpenResult, FilePattern, FileReadEvent, FileReadFn, FileRwConfig, FileSession,
         FileSessionBuilder, FileState, FileTransformFn, FileWriteEvent, FileWriteFn,
     };
-    pub use crate::logger::Logger;
-    pub use crate::patterns;
-    pub use crate::PluginBuilder;
+
+    // Exec types
+    pub use crate::exec::{
+        ExecAction, ExecContext, ExecEvent, ExecExitFn, ExecFn, ExecPattern, ExecResult,
+        ExecRwConfig, ExecSession, ExecSessionBuilder, ExecStderrFn, ExecStdinFn, ExecStdoutFn,
+        ExecTransformFn, ExitEvent, StderrEvent, StdinEvent, StdoutEvent,
+    };
+
+    // Net types
+    pub use crate::net::{
+        AcceptEvent, AcceptFn, AcceptResult, CloseEvent as NetCloseEvent, CloseFn as NetCloseFn,
+        ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
+        NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
+        ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+    };
 }
