@@ -1,17 +1,21 @@
 # Rust examples workspace Makefile
 #
-# SDK Detection: Auto-generates .cargo/config.toml to use local SDK in monorepo
-# Build:         make build (builds all plugins)
-# Clean:         make clean (removes artifacts and config)
+# Build bundle:  make           (recommended)
+# Build plugins:  make build    (shared libraries for dynamic loading)
+# Build dist:  make dist        (static archives for bundling)
+# Clean:  make clean
 # Dev container:  make dev
 
 LOCAL_SDK := ..
 CARGO_CONFIG := .cargo/config.toml
 IMAGE_NAME := qcontrol-sdk-rust-demo
 
-.PHONY: all setup-sdk build dist clean docker-build dev
+.PHONY: all bundle setup-sdk build dist clean docker-build dev
 
-all: build
+all: bundle
+
+bundle: setup-sdk
+	qcontrol bundle --config bundle.toml
 
 # Auto-generate .cargo/config.toml if local SDK exists
 setup-sdk:
@@ -33,6 +37,7 @@ dist: setup-sdk
 	cargo build --release
 
 clean:
+	rm -f rust-plugins.so
 	cargo clean
 	rm -rf .cargo
 	rm -rf file-logger/dist access-control/dist byte-counter/dist content-filter/dist text-transform/dist
