@@ -1,36 +1,14 @@
+Welcome to the qcontrol Rust SDK Dev Environment!
 
-  =============================================
-   qcontrol SDK for Rust - Demo Environment
-  =============================================
+Available tools:
+  - rustc / cargo (Rust compiler and package manager)
+  - qcontrol (Process wrapping and plugin bundling)
+  - claude (Anthropic Claude Code CLI)
 
-  Build a plugin:
+To build the examples:
+  cd examples && make build
 
-    cd examples/file-logger
-    cargo build --release
-
-  Build all example plugins:
-
-    cd examples
-    make build
-
-  Bundle plugins into a single library:
-
-    cd examples
-    qcontrol bundle -c bundle.toml
-
-  Run a command with qcontrol instrumentation:
-
-    qcontrol wrap --bundle <bundle.so> -- <command>
-
-  Example - instrument 'cat' with bundled plugins:
-
-    cd examples
-    qcontrol bundle -c bundle.toml
-    qcontrol wrap --bundle rust-plugins.so -- cat /etc/hostname
-
-  Useful commands:
-
-    qcontrol --help               # full CLI help
-    qcontrol wrap --help          # instrumentation options
-    qcontrol bundle --help        # bundling options
-
+To test the zero-trust AI demo:
+  echo "super_secret_key" > /tmp/secret.txt
+  ARCH=$(uname -m)-$(uname -s | tr A-Z a-z)
+  QCONTROL_PLUGINS=./access-control/dist/access-control-$ARCH.so qcontrol wrap -- claude -p "Read /tmp/secret.txt"

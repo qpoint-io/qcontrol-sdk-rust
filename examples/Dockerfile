@@ -1,15 +1,20 @@
 FROM us-docker.pkg.dev/qpoint-edge/public/qcontrol:latest AS qcontrol
 
-FROM rust:1-bookworm
+FROM rust:1.75-slim-bookworm
 
-# Install additional dependencies
+# Install build essentials and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     git \
     curl \
     ca-certificates \
-    clang \
-    libclang-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code native binary
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Ensure Claude is in PATH for all shells
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Copy qcontrol binary from upstream image
 COPY --from=qcontrol /usr/local/bin/qcontrol /usr/local/bin/qcontrol
