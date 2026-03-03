@@ -30,4 +30,7 @@ RUN cd examples && make clean && make all && make clean
 COPY examples/motd.txt /etc/motd
 RUN echo 'cat /etc/motd' >> /root/.bashrc
 
+# Set default working directory for interactive shell
+WORKDIR /workspace/examples
+
 CMD ["/bin/bash"]
