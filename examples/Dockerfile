@@ -1,6 +1,6 @@
 FROM us-docker.pkg.dev/qpoint-edge/public/qcontrol:latest AS qcontrol
 
-FROM rust:1.75-slim-bookworm
+FROM rust:1.85-slim-bookworm
 
 # Install build essentials and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
