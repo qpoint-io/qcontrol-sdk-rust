@@ -17,7 +17,19 @@ use crate::ffi;
 /// Receives the file state, context, and mutable buffer.
 pub type FileTransformFn = fn(FileState, &FileContext, &mut Buffer) -> FileAction;
 
-/// Internal wrapper around user state that includes transform function pointers.
+/// Declared (declarative) transforms extracted from FileRwConfig.
+///
+/// Stored in SessionState so the unified trampoline can apply them
+/// using buffer operations, independent of the agent's own transform pipeline.
+#[doc(hidden)]
+pub struct DeclaredTransforms {
+    pub prefix: Option<Vec<u8>>,
+    pub suffix: Option<Vec<u8>>,
+    pub patterns: Vec<(Vec<u8>, Vec<u8>)>, // (needle, replacement) pairs
+}
+
+/// Internal wrapper around user state that includes transform function pointers
+/// and declared transforms.
 ///
 /// This allows per-file transform functions by storing them alongside the state.
 /// The agent passes this as the opaque state pointer, and our trampolines/callbacks
@@ -30,6 +42,10 @@ pub struct SessionState {
     pub read_transform: Option<FileTransformFn>,
     /// Write transform function (may be None).
     pub write_transform: Option<FileTransformFn>,
+    /// Declared read transforms (prefix, suffix, patterns).
+    pub read_declared: Option<DeclaredTransforms>,
+    /// Declared write transforms (prefix, suffix, patterns).
+    pub write_declared: Option<DeclaredTransforms>,
 }
 
 impl SessionState {
@@ -181,15 +197,28 @@ impl FileSession {
     /// for calling back to clean up via on_file_close.
     #[doc(hidden)]
     pub fn into_ffi(self) -> ffi::qcontrol_file_session_t {
-        // Extract transform functions from configs before moving them
+        // Extract transform functions and declared transforms from configs
         let read_transform = self.read.as_ref().and_then(|c| c.transform);
         let write_transform = self.write.as_ref().and_then(|c| c.transform);
 
-        // Create SessionState wrapper containing user state + transform fns
+        let read_declared = self.read.as_ref().map(|c| DeclaredTransforms {
+            prefix: c.prefix.clone(),
+            suffix: c.suffix.clone(),
+            patterns: c.patterns.iter().map(|p| (p.needle().to_vec(), p.replacement().to_vec())).collect(),
+        });
+        let write_declared = self.write.as_ref().map(|c| DeclaredTransforms {
+            prefix: c.prefix.clone(),
+            suffix: c.suffix.clone(),
+            patterns: c.patterns.iter().map(|p| (p.needle().to_vec(), p.replacement().to_vec())).collect(),
+        });
+
+        // Create SessionState wrapper containing user state + transform fns + declared transforms
         let session_state = SessionState {
             user_state: self.state,
             read_transform,
             write_transform,
+            read_declared,
+            write_declared,
         };
 
         // Leak SessionState - will be freed in close callback
@@ -340,26 +369,16 @@ fn rw_config_to_ffi(config: FileRwConfig, is_read: bool) -> Box<ffi::qcontrol_fi
         (ptr, count)
     };
 
-    // Handle prefix
-    let (prefix_ptr, prefix_len) = match &config.prefix {
-        Some(p) => {
-            let leaked = Box::leak(p.clone().into_boxed_slice());
-            (leaked.as_ptr() as *const c_char, leaked.len())
-        }
-        None => (std::ptr::null(), 0),
-    };
+    // Always set a transform function when there's any config to apply.
+    // The unified trampoline handles both declarative transforms (prefix, suffix,
+    // patterns) and custom transform functions, ensuring transforms are applied
+    // regardless of whether the agent implements its own declarative pipeline.
+    let has_any_config = config.transform.is_some()
+        || config.prefix.is_some()
+        || config.suffix.is_some()
+        || !config.patterns.is_empty();
 
-    // Handle suffix
-    let (suffix_ptr, suffix_len) = match &config.suffix {
-        Some(s) => {
-            let leaked = Box::leak(s.clone().into_boxed_slice());
-            (leaked.as_ptr() as *const c_char, leaked.len())
-        }
-        None => (std::ptr::null(), 0),
-    };
-
-    // Handle transform function - use appropriate trampoline based on read/write
-    let transform_fn: ffi::qcontrol_file_transform_fn = if config.transform.is_some() {
+    let transform_fn: ffi::qcontrol_file_transform_fn = if has_any_config {
         if is_read {
             Some(read_transform_trampoline)
         } else {
@@ -369,23 +388,66 @@ fn rw_config_to_ffi(config: FileRwConfig, is_read: bool) -> Box<ffi::qcontrol_fi
         None
     };
 
-    Box::new(ffi::qcontrol_file_rw_config_t {
-        prefix: prefix_ptr,
-        prefix_len,
-        suffix: suffix_ptr,
-        suffix_len,
-        prefix_fn: None,
-        suffix_fn: None,
-        replace: patterns_ptr,
-        replace_count: patterns_count,
-        transform: transform_fn,
-    })
+    // When the trampoline handles declarative transforms, zero out the FFI
+    // struct's prefix/suffix/replace fields so the agent doesn't apply them
+    // natively (which would cause double application). The trampoline applies
+    // them via buffer operations using DeclaredTransforms stored in SessionState.
+    if transform_fn.is_some() {
+        Box::new(ffi::qcontrol_file_rw_config_t {
+            prefix: std::ptr::null(),
+            prefix_len: 0,
+            suffix: std::ptr::null(),
+            suffix_len: 0,
+            prefix_fn: None,
+            suffix_fn: None,
+            replace: std::ptr::null(),
+            replace_count: 0,
+            transform: transform_fn,
+        })
+    } else {
+        // No trampoline — let the agent handle declarative fields natively
+        // (This path is only hit when there's truly no config at all)
+
+        // Handle prefix
+        let (prefix_ptr, prefix_len) = match &config.prefix {
+            Some(p) => {
+                let leaked = Box::leak(p.clone().into_boxed_slice());
+                (leaked.as_ptr() as *const c_char, leaked.len())
+            }
+            None => (std::ptr::null(), 0),
+        };
+
+        // Handle suffix
+        let (suffix_ptr, suffix_len) = match &config.suffix {
+            Some(s) => {
+                let leaked = Box::leak(s.clone().into_boxed_slice());
+                (leaked.as_ptr() as *const c_char, leaked.len())
+            }
+            None => (std::ptr::null(), 0),
+        };
+
+        Box::new(ffi::qcontrol_file_rw_config_t {
+            prefix: prefix_ptr,
+            prefix_len,
+            suffix: suffix_ptr,
+            suffix_len,
+            prefix_fn: None,
+            suffix_fn: None,
+            replace: patterns_ptr,
+            replace_count: patterns_count,
+            transform: transform_fn,
+        })
+    }
 }
 
 /// Trampoline for read transforms.
 ///
-/// Called by the agent, extracts the transform function from SessionState,
-/// and calls it with proper Rust wrappers.
+/// Called by the agent. Applies the full transform pipeline:
+/// prefix -> replace -> custom transform -> suffix
+///
+/// This ensures both declarative transforms (prefix, suffix, patterns)
+/// and custom transform functions are applied, even if the agent doesn't
+/// implement its own declarative transform pipeline.
 unsafe extern "C" fn read_transform_trampoline(
     state: *mut c_void,
     ctx: *mut ffi::qcontrol_file_ctx_t,
@@ -398,26 +460,48 @@ unsafe extern "C" fn read_transform_trampoline(
     // Cast state to SessionState
     let session_state = &*(state as *const SessionState);
 
-    // Get the read transform function
-    let transform_fn = match session_state.read_transform {
-        Some(f) => f,
-        None => return FileAction::Pass.to_ffi(),
-    };
-
     // Create Rust wrappers
-    let file_state = session_state.as_file_state();
     let file_ctx = FileContext::from_raw(ctx);
     let mut buffer = Buffer::from_raw(buf);
 
-    // Call the user's transform function
-    let action = transform_fn(file_state, &file_ctx, &mut buffer);
+    // Apply declared transforms: prefix -> replace
+    if let Some(ref declared) = session_state.read_declared {
+        if let Some(ref prefix) = declared.prefix {
+            buffer.prepend(prefix);
+        }
+        for (needle, replacement) in &declared.patterns {
+            buffer.replace_all(needle, replacement);
+        }
+    }
+
+    // Call the user's custom transform function (if any)
+    let action = if let Some(transform_fn) = session_state.read_transform {
+        let file_state = session_state.as_file_state();
+        transform_fn(file_state, &file_ctx, &mut buffer)
+    } else {
+        FileAction::Pass
+    };
+
+    // Apply suffix (only if not blocked)
+    if action == FileAction::Pass {
+        if let Some(ref declared) = session_state.read_declared {
+            if let Some(ref suffix) = declared.suffix {
+                buffer.append(suffix);
+            }
+        }
+    }
+
     action.to_ffi()
 }
 
 /// Trampoline for write transforms.
 ///
-/// Called by the agent, extracts the transform function from SessionState,
-/// and calls it with proper Rust wrappers.
+/// Called by the agent. Applies the full transform pipeline:
+/// prefix -> replace -> custom transform -> suffix
+///
+/// This ensures both declarative transforms (prefix, suffix, patterns)
+/// and custom transform functions are applied, even if the agent doesn't
+/// implement its own declarative transform pipeline.
 unsafe extern "C" fn write_transform_trampoline(
     state: *mut c_void,
     ctx: *mut ffi::qcontrol_file_ctx_t,
@@ -430,18 +514,36 @@ unsafe extern "C" fn write_transform_trampoline(
     // Cast state to SessionState
     let session_state = &*(state as *const SessionState);
 
-    // Get the write transform function
-    let transform_fn = match session_state.write_transform {
-        Some(f) => f,
-        None => return FileAction::Pass.to_ffi(),
-    };
-
     // Create Rust wrappers
-    let file_state = session_state.as_file_state();
     let file_ctx = FileContext::from_raw(ctx);
     let mut buffer = Buffer::from_raw(buf);
 
-    // Call the user's transform function
-    let action = transform_fn(file_state, &file_ctx, &mut buffer);
+    // Apply declared transforms: prefix -> replace
+    if let Some(ref declared) = session_state.write_declared {
+        if let Some(ref prefix) = declared.prefix {
+            buffer.prepend(prefix);
+        }
+        for (needle, replacement) in &declared.patterns {
+            buffer.replace_all(needle, replacement);
+        }
+    }
+
+    // Call the user's custom transform function (if any)
+    let action = if let Some(transform_fn) = session_state.write_transform {
+        let file_state = session_state.as_file_state();
+        transform_fn(file_state, &file_ctx, &mut buffer)
+    } else {
+        FileAction::Pass
+    };
+
+    // Apply suffix (only if not blocked)
+    if action == FileAction::Pass {
+        if let Some(ref declared) = session_state.write_declared {
+            if let Some(ref suffix) = declared.suffix {
+                buffer.append(suffix);
+            }
+        }
+    }
+
     action.to_ffi()
 }

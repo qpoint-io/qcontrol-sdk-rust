@@ -1,4 +1,4 @@
-FROM us-docker.pkg.dev/qpoint-edge/public/qcontrol:latest AS qcontrol
+FROM --platform=$TARGETPLATFORM us-docker.pkg.dev/qpoint-edge/public/qcontrol:latest AS qcontrol
 
 FROM rust:1.85-slim-bookworm
 
