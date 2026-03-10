@@ -82,20 +82,34 @@ fn on_net_protocol(_state: FileState, ev: &ProtocolEvent) {
 }
 
 fn on_net_send(_state: FileState, ev: &SendEvent) -> NetAction {
+    let preview = ev
+        .data_str()
+        .map(|s| s.chars().take(120).collect::<String>())
+        .unwrap_or_else(|| format!("<{} bytes binary>", ev.count()));
     LOGGER.log(&format!(
-        "[net_logger.rs] send(fd={}, count={})",
+        "[net_logger.rs] send(fd={}, count={}): {}",
         ev.fd(),
-        ev.count()
+        ev.count(),
+        preview
     ));
     NetAction::Pass
 }
 
 fn on_net_recv(_state: FileState, ev: &RecvEvent) -> NetAction {
+    let preview = ev
+        .data_str()
+        .map(|s| s.chars().take(120).collect::<String>())
+        .unwrap_or_else(|| {
+            ev.data()
+                .map(|d| format!("<{} bytes binary>", d.len()))
+                .unwrap_or_else(|| "no data".to_string())
+        });
     LOGGER.log(&format!(
-        "[net_logger.rs] recv(fd={}, count={}) = {}",
+        "[net_logger.rs] recv(fd={}, count={}, result={}): {}",
         ev.fd(),
         ev.count(),
-        ev.result()
+        ev.result(),
+        preview
     ));
     NetAction::Pass
 }

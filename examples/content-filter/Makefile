@@ -5,7 +5,12 @@
 # Clean:   make clean
 
 NAME := content-filter
-ARCH := $(shell uname -m)-$(shell uname -s | tr A-Z a-z)
+# Normalize arch/OS to match Rust std::env::consts (used by qcontrol bundler)
+RAW_ARCH := $(shell uname -m)
+RAW_OS := $(shell uname -s | tr A-Z a-z)
+NORM_ARCH := $(if $(filter arm64,$(RAW_ARCH)),aarch64,$(RAW_ARCH))
+NORM_OS := $(if $(filter darwin,$(RAW_OS)),macos,$(RAW_OS))
+ARCH := $(NORM_ARCH)-$(NORM_OS)
 DIST := dist
 
 # Rust library names use underscores
@@ -19,10 +24,12 @@ all: build
 setup-sdk:
 	@$(MAKE) -C .. setup-sdk
 
+EXT := $(if $(filter macos,$(NORM_OS)),dylib,so)
+
 build: setup-sdk
 	cargo build --release -p $(NAME)
 	@mkdir -p $(DIST)
-	cp ../target/release/lib$(LIB_NAME).so $(DIST)/$(NAME)-$(ARCH).so
+	cp ../target/release/lib$(LIB_NAME).$(EXT) $(DIST)/$(NAME)-$(ARCH).$(EXT)
 
 dist: setup-sdk
 	cargo build --release -p $(NAME)

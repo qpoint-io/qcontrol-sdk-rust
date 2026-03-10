@@ -18,6 +18,8 @@ bundle: setup-sdk
 	qcontrol bundle --config bundle.toml
 
 # Auto-generate .cargo/config.toml if local SDK exists
+# On macOS, adds -undefined dynamic_lookup so plugins can reference
+# qcontrol runtime symbols that are resolved at load time.
 setup-sdk:
 	@if [ -d "$(LOCAL_SDK)" ]; then \
 		mkdir -p .cargo; \
@@ -28,6 +30,16 @@ setup-sdk:
 	elif [ -f "$(CARGO_CONFIG)" ]; then \
 		rm $(CARGO_CONFIG); \
 		echo "Local SDK not found, using git dependency"; \
+	fi
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		mkdir -p .cargo; \
+		echo '' >> $(CARGO_CONFIG); \
+		echo '[target.aarch64-apple-darwin]' >> $(CARGO_CONFIG); \
+		echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> $(CARGO_CONFIG); \
+		echo '' >> $(CARGO_CONFIG); \
+		echo '[target.x86_64-apple-darwin]' >> $(CARGO_CONFIG); \
+		echo 'rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]' >> $(CARGO_CONFIG); \
+		echo "Added macOS linker flags for plugin symbol resolution"; \
 	fi
 
 build: setup-sdk
