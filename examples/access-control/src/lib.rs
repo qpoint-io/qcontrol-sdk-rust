@@ -21,8 +21,6 @@ fn on_open(ev: &FileOpenEvent) -> FileOpenResult {
     FileOpenResult::Pass
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_access_control")
-        .on_init(init)
-        .on_file_open(on_open)
-);
+export_plugin!(PluginBuilder::new("rust_access_control")
+    .on_init(init)
+    .on_file_open(on_open));

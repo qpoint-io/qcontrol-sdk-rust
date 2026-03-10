@@ -80,11 +80,7 @@ impl<'a> ExecEvent<'a> {
         if self.inner.cwd.is_null() || self.inner.cwd_len == 0 {
             None
         } else {
-            unsafe {
-                CStr::from_ptr(self.inner.cwd)
-                    .to_str()
-                    .ok()
-            }
+            unsafe { CStr::from_ptr(self.inner.cwd).to_str().ok() }
         }
     }
 }
@@ -119,9 +115,7 @@ impl<'a> StdinEvent<'a> {
         if self.inner.buf.is_null() || self.inner.count == 0 {
             &[]
         } else {
-            unsafe {
-                std::slice::from_raw_parts(self.inner.buf as *const u8, self.inner.count)
-            }
+            unsafe { std::slice::from_raw_parts(self.inner.buf as *const u8, self.inner.count) }
         }
     }
 

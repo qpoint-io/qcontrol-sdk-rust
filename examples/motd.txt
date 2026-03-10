@@ -8,6 +8,18 @@ Available tools:
 To build the examples:
   cd examples && make build
 
+To build plugins by type:
+  cd examples
+  make build-file
+  make build-exec
+  make build-net
+
+To bundle plugins by type:
+  cd examples
+  make bundle-file
+  make bundle-exec
+  make bundle-net
+
 To test the zero-trust AI demo:
   echo "super_secret_key" > /tmp/secret.txt
   ARCH=$(uname -m)-$(uname -s | tr A-Z a-z)

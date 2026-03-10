@@ -1,0 +1,8 @@
+[bundle]
+output = "rust-net-plugins.so"
+
+[[plugins]]
+source = "./net-logger"
+
+[[plugins]]
+source = "./net-transform"

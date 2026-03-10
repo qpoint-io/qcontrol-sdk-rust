@@ -2,8 +2,8 @@
 //!
 //! Defines the return types for file callbacks.
 
-use crate::file::FileSession;
 use crate::ffi;
+use crate::file::FileSession;
 
 /// Result returned from `on_file_open` callback.
 ///

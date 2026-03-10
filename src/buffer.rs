@@ -135,11 +135,7 @@ impl<'a> Buffer<'a> {
     /// Prepend data to the beginning of the buffer.
     pub fn prepend(&mut self, data: &[u8]) {
         unsafe {
-            ffi::qcontrol_buffer_prepend(
-                self.inner,
-                data.as_ptr() as *const c_char,
-                data.len(),
-            );
+            ffi::qcontrol_buffer_prepend(self.inner, data.as_ptr() as *const c_char, data.len());
         }
     }
 
@@ -151,11 +147,7 @@ impl<'a> Buffer<'a> {
     /// Append data to the end of the buffer.
     pub fn append(&mut self, data: &[u8]) {
         unsafe {
-            ffi::qcontrol_buffer_append(
-                self.inner,
-                data.as_ptr() as *const c_char,
-                data.len(),
-            );
+            ffi::qcontrol_buffer_append(self.inner, data.as_ptr() as *const c_char, data.len());
         }
     }
 
@@ -208,11 +200,8 @@ impl<'a> Buffer<'a> {
     /// Returns `true` if a removal was made.
     pub fn remove(&mut self, needle: &[u8]) -> bool {
         unsafe {
-            ffi::qcontrol_buffer_remove(
-                self.inner,
-                needle.as_ptr() as *const c_char,
-                needle.len(),
-            ) != 0
+            ffi::qcontrol_buffer_remove(self.inner, needle.as_ptr() as *const c_char, needle.len())
+                != 0
         }
     }
 
@@ -250,11 +239,7 @@ impl<'a> Buffer<'a> {
     /// Set the buffer contents to new data.
     pub fn set(&mut self, data: &[u8]) {
         unsafe {
-            ffi::qcontrol_buffer_set(
-                self.inner,
-                data.as_ptr() as *const c_char,
-                data.len(),
-            );
+            ffi::qcontrol_buffer_set(self.inner, data.as_ptr() as *const c_char, data.len());
         }
     }
 

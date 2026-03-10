@@ -59,15 +59,18 @@ fn on_open(ev: &FileOpenEvent) -> FileOpenResult {
                     .replace("password", "********")
                     .replace("secret", "[REDACTED]")
                     .replace("api_key", "[HIDDEN]")
-                    .replace("token", "[HIDDEN]")
+                    .replace("token", "[HIDDEN]"),
             )
-            .build()
+            .build(),
     )
 }
 
 fn on_close(state: FileState, _: &FileCloseEvent) {
     if let Some(filter_state) = state.downcast_ref::<FilterState>() {
-        LOGGER.log(&format!("[content_filter.rs] closed: {}", filter_state.path));
+        LOGGER.log(&format!(
+            "[content_filter.rs] closed: {}",
+            filter_state.path
+        ));
     }
 }
 
@@ -80,7 +83,6 @@ export_plugin!(
         .on_init(init)
         .on_cleanup(cleanup)
         .on_file_open(on_open)
-        .on_file_close(on_close)
-    // Note: on_file_read/on_file_write not needed - transforms are
-    // handled declaratively via the session config returned from on_file_open
+        .on_file_close(on_close) // Note: on_file_read/on_file_write not needed - transforms are
+                                 // handled declaratively via the session config returned from on_file_open
 );

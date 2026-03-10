@@ -8,8 +8,8 @@ use std::ffi::{c_char, c_void, CString};
 
 use crate::buffer::Buffer;
 use crate::exec::{ExecAction, ExecContext, ExecPattern};
-use crate::file::FileState;
 use crate::ffi;
+use crate::file::FileState;
 
 /// Transform function type for custom transforms.
 ///
@@ -100,7 +100,8 @@ impl ExecRwConfig {
 
     /// Add a pattern replacement.
     pub fn replace(mut self, needle: &str, replacement: &str) -> Self {
-        self.patterns.push(ExecPattern::from_str(needle, replacement));
+        self.patterns
+            .push(ExecPattern::from_str(needle, replacement));
         self
     }
 
@@ -194,11 +195,26 @@ impl ExecSession {
         let state_ptr = Box::into_raw(Box::new(session_state)) as *mut c_void;
 
         // Get pointers for C arrays
-        let set_argv_ptr = set_argv_ptrs.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
-        let prepend_argv_ptr = prepend_argv_ptrs.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
-        let append_argv_ptr = append_argv_ptrs.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
-        let set_env_ptr = set_env_ptrs.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
-        let unset_env_ptr = unset_env_ptrs.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
+        let set_argv_ptr = set_argv_ptrs
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let prepend_argv_ptr = prepend_argv_ptrs
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let append_argv_ptr = append_argv_ptrs
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let set_env_ptr = set_env_ptrs
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let unset_env_ptr = unset_env_ptrs
+            .as_ref()
+            .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
 
         // Leak configs
         let stdin_ptr = match self.stdin {
@@ -216,13 +232,21 @@ impl ExecSession {
 
         ffi::qcontrol_exec_session_t {
             state: state_ptr,
-            set_path: self.set_path.as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()),
+            set_path: self
+                .set_path
+                .as_ref()
+                .map(|s| s.as_ptr())
+                .unwrap_or(std::ptr::null()),
             set_argv: set_argv_ptr,
             prepend_argv: prepend_argv_ptr,
             append_argv: append_argv_ptr,
             set_env: set_env_ptr,
             unset_env: unset_env_ptr,
-            set_cwd: self.set_cwd.as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()),
+            set_cwd: self
+                .set_cwd
+                .as_ref()
+                .map(|s| s.as_ptr())
+                .unwrap_or(std::ptr::null()),
             stdin_config: stdin_ptr,
             stdout_config: stdout_ptr,
             stderr_config: stderr_ptr,

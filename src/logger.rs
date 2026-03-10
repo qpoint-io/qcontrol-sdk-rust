@@ -36,11 +36,7 @@ impl Logger {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| DEFAULT_LOG_PATH.to_string());
 
-        if let Ok(file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-        {
+        if let Ok(file) = OpenOptions::new().create(true).append(true).open(&log_path) {
             self.file.get_or_init(|| Mutex::new(file));
         }
     }

@@ -1,0 +1,5 @@
+[bundle]
+output = "rust-exec-plugins.so"
+
+[[plugins]]
+source = "./exec-logger"
