@@ -89,15 +89,15 @@
 //! ```
 
 // Internal modules
+pub mod buffer;
+mod error;
+pub mod exec;
 #[doc(hidden)]
 pub mod ffi;
-mod error;
-mod plugin;
-pub mod buffer;
 pub mod file;
-pub mod exec;
-pub mod net;
 mod logger;
+pub mod net;
+mod plugin;
 
 // Re-export public API
 pub use buffer::Buffer;

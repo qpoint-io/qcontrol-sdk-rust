@@ -83,13 +83,11 @@ fn on_exec_exit(_state: FileState, ev: &ExitEvent) {
     }
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_exec_logger")
-        .on_init(init)
-        .on_cleanup(cleanup)
-        .on_exec(on_exec)
-        .on_exec_stdin(on_exec_stdin)
-        .on_exec_stdout(on_exec_stdout)
-        .on_exec_stderr(on_exec_stderr)
-        .on_exec_exit(on_exec_exit)
-);
+export_plugin!(PluginBuilder::new("rust_exec_logger")
+    .on_init(init)
+    .on_cleanup(cleanup)
+    .on_exec(on_exec)
+    .on_exec_stdin(on_exec_stdin)
+    .on_exec_stdout(on_exec_stdout)
+    .on_exec_stderr(on_exec_stderr)
+    .on_exec_exit(on_exec_exit));

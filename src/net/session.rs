@@ -7,8 +7,8 @@ use std::any::Any;
 use std::ffi::{c_char, c_void, CString};
 
 use crate::buffer::Buffer;
-use crate::file::FileState;
 use crate::ffi;
+use crate::file::FileState;
 use crate::net::{NetAction, NetContext, NetPattern};
 
 /// Transform function type for custom transforms.
@@ -24,6 +24,8 @@ pub type NetTransformFn = fn(FileState, &NetContext, &mut Buffer) -> NetAction;
 pub struct SessionState {
     /// User-provided state (may be None if user didn't set state).
     pub user_state: Option<Box<dyn Any + Send>>,
+    /// Opaque raw state used by `ConnectResult::State` / `AcceptResult::State`.
+    _opaque_state: Option<*mut c_void>,
     /// Send transform function.
     pub send_transform: Option<NetTransformFn>,
     /// Recv transform function.
@@ -39,6 +41,21 @@ impl SessionState {
             Some(boxed) => FileState::from_ref(boxed.as_ref()),
             None => FileState::empty(),
         }
+    }
+
+    /// Wrap an opaque state pointer so later callbacks and cleanup can treat it
+    /// like a normal network session state container.
+    #[doc(hidden)]
+    pub fn from_raw_state(state: *mut c_void) -> *mut c_void {
+        let session_state = SessionState {
+            user_state: None,
+            _opaque_state: Some(state),
+            send_transform: None,
+            recv_transform: None,
+            _set_addr: None,
+        };
+
+        Box::into_raw(Box::new(session_state)) as *mut c_void
     }
 }
 
@@ -87,7 +104,8 @@ impl NetRwConfig {
 
     /// Add a pattern replacement.
     pub fn replace(mut self, needle: &str, replacement: &str) -> Self {
-        self.patterns.push(NetPattern::from_str(needle, replacement));
+        self.patterns
+            .push(NetPattern::from_str(needle, replacement));
         self
     }
 
@@ -140,6 +158,7 @@ impl NetSession {
         // Create SessionState wrapper
         let session_state = SessionState {
             user_state: self.state,
+            _opaque_state: None,
             send_transform,
             recv_transform,
             _set_addr: self.set_addr.clone(),

@@ -5,8 +5,9 @@
 # Clean:   make clean
 
 NAME := file-logger
-ARCH := $(shell uname -m)-$(shell uname -s | tr A-Z a-z)
+ARCH := $(shell uname -m | sed 's/^arm64$$/aarch64/')-$(shell uname -s | tr A-Z a-z | sed 's/^darwin$$/macos/')
 DIST := dist
+SHLIB_EXT := $(if $(filter Darwin,$(shell uname -s)),dylib,so)
 
 # Rust library names use underscores
 LIB_NAME := file_logger
@@ -22,7 +23,7 @@ setup-sdk:
 build: setup-sdk
 	cargo build --release -p $(NAME)
 	@mkdir -p $(DIST)
-	cp ../target/release/lib$(LIB_NAME).so $(DIST)/$(NAME)-$(ARCH).so
+	cp ../target/release/lib$(LIB_NAME).$(SHLIB_EXT) $(DIST)/$(NAME)-$(ARCH).$(SHLIB_EXT)
 
 dist: setup-sdk
 	cargo build --release -p $(NAME)

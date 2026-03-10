@@ -48,28 +48,23 @@ fn on_open(ev: &FileOpenEvent) -> FileOpenResult {
     let path = ev.path();
 
     // Skip common paths to reduce noise
-    if path.starts_with("/proc/")
-        || path.starts_with("/sys/")
-        || path.starts_with("/dev/")
-    {
+    if path.starts_with("/proc/") || path.starts_with("/sys/") || path.starts_with("/dev/") {
         return FileOpenResult::Pass;
     }
 
     LOGGER.log(&format!("[byte_counter.rs] tracking: {}", path));
 
     // Return Session with state to track this file
-    FileOpenResult::Session(
-        FileSession::builder()
-            .state(FileStats::new(path))
-            .build()
-    )
+    FileOpenResult::Session(FileSession::builder().state(FileStats::new(path)).build())
 }
 
 fn on_read(state: FileState, ev: &FileReadEvent) -> FileAction {
     if let Some(stats) = state.downcast_ref::<FileStats>() {
         let bytes = ev.result();
         if bytes > 0 {
-            stats.bytes_read.fetch_add(bytes as usize, Ordering::Relaxed);
+            stats
+                .bytes_read
+                .fetch_add(bytes as usize, Ordering::Relaxed);
             stats.read_calls.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -80,7 +75,9 @@ fn on_write(state: FileState, ev: &FileWriteEvent) -> FileAction {
     if let Some(stats) = state.downcast_ref::<FileStats>() {
         let bytes = ev.result();
         if bytes > 0 {
-            stats.bytes_written.fetch_add(bytes as usize, Ordering::Relaxed);
+            stats
+                .bytes_written
+                .fetch_add(bytes as usize, Ordering::Relaxed);
             stats.write_calls.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -104,12 +101,10 @@ fn cleanup() {
     LOGGER.log("[byte_counter.rs] cleanup complete");
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_byte_counter")
-        .on_init(init)
-        .on_cleanup(cleanup)
-        .on_file_open(on_open)
-        .on_file_read(on_read)
-        .on_file_write(on_write)
-        .on_file_close(on_close)
-);
+export_plugin!(PluginBuilder::new("rust_byte_counter")
+    .on_init(init)
+    .on_cleanup(cleanup)
+    .on_file_open(on_open)
+    .on_file_read(on_read)
+    .on_file_write(on_write)
+    .on_file_close(on_close));

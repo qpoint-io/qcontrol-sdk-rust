@@ -15,7 +15,9 @@ mod state;
 pub use action::{FileAction, FileOpenResult};
 pub use event::{FileCloseEvent, FileOpenEvent, FileReadEvent, FileWriteEvent};
 pub use pattern::FilePattern;
-pub use session::{FileContext, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn, SessionState};
+pub use session::{
+    FileContext, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn, SessionState,
+};
 pub use state::FileState;
 
 // Re-export Buffer from parent module for convenience

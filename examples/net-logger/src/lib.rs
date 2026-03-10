@@ -1,8 +1,9 @@
-//! Net logger plugin - logs all network operations to a file
+//! Net logger plugin - logs all network operations to a file.
 //!
-//! Demonstrates the v1 network API. Note: network hooks are not yet
-//! implemented in the agent, so this plugin will compile but
-//! the callbacks won't be invoked at runtime.
+//! This plugin is useful with `qcontrol wrap`, where wrapped HTTP and HTTPS
+//! traffic is normalized into the network ABI and routed through these
+//! callbacks. Native agent-side net hooks are still under development, but the
+//! current implementation already exercises the same plugin-facing ABI.
 //!
 //! Environment variables:
 //!   QCONTROL_LOG_FILE - Path to log file (default: /tmp/qcontrol.log)
@@ -10,6 +11,7 @@
 use qcontrol::prelude::*;
 
 static LOGGER: Logger = Logger::new();
+struct TrackedState;
 
 fn init() -> Result<(), Error> {
     LOGGER.init();
@@ -32,14 +34,10 @@ fn on_net_connect(ev: &ConnectEvent) -> ConnectResult {
 
     let src = ev.src_addr();
     if !src.is_empty() {
-        LOGGER.log(&format!(
-            "[net_logger.rs]   src={}:{}",
-            src,
-            ev.src_port()
-        ));
+        LOGGER.log(&format!("[net_logger.rs]   src={}:{}", src, ev.src_port()));
     }
 
-    ConnectResult::Pass
+    ConnectResult::Session(NetSession::builder().state(TrackedState).build())
 }
 
 fn on_net_accept(ev: &AcceptEvent) -> AcceptResult {
@@ -51,7 +49,7 @@ fn on_net_accept(ev: &AcceptEvent) -> AcceptResult {
         ev.src_port(),
         ev.result()
     ));
-    AcceptResult::Pass
+    AcceptResult::Session(NetSession::builder().state(TrackedState).build())
 }
 
 fn on_net_tls(_state: FileState, ev: &TlsEvent) {
@@ -108,16 +106,14 @@ fn on_net_close(_state: FileState, ev: &NetCloseEvent) {
     ));
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_net_logger")
-        .on_init(init)
-        .on_cleanup(cleanup)
-        .on_net_connect(on_net_connect)
-        .on_net_accept(on_net_accept)
-        .on_net_tls(on_net_tls)
-        .on_net_domain(on_net_domain)
-        .on_net_protocol(on_net_protocol)
-        .on_net_send(on_net_send)
-        .on_net_recv(on_net_recv)
-        .on_net_close(on_net_close)
-);
+export_plugin!(PluginBuilder::new("rust_net_logger")
+    .on_init(init)
+    .on_cleanup(cleanup)
+    .on_net_connect(on_net_connect)
+    .on_net_accept(on_net_accept)
+    .on_net_tls(on_net_tls)
+    .on_net_domain(on_net_domain)
+    .on_net_protocol(on_net_protocol)
+    .on_net_send(on_net_send)
+    .on_net_recv(on_net_recv)
+    .on_net_close(on_net_close));

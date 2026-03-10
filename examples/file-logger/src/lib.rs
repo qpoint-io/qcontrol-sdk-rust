@@ -51,11 +51,9 @@ fn on_close(_: FileState, ev: &FileCloseEvent) {
     ));
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_file_logger")
-        .on_init(init)
-        .on_file_open(on_open)
-        .on_file_read(on_read)
-        .on_file_write(on_write)
-        .on_file_close(on_close)
-);
+export_plugin!(PluginBuilder::new("rust_file_logger")
+    .on_init(init)
+    .on_file_open(on_open)
+    .on_file_read(on_read)
+    .on_file_write(on_write)
+    .on_file_close(on_close));

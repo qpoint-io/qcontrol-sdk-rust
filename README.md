@@ -55,11 +55,11 @@ export_plugin!(
 );
 ```
 
-Build and run:
+Bundle and run:
 
 ```bash
-cargo build --release
-qcontrol wrap --plugins ./target/release/libhello_plugin.so -- cat /etc/passwd
+qcontrol bundle --plugins . -o hello-plugin-bundle.so
+qcontrol wrap --bundle ./hello-plugin-bundle.so -- cat /etc/passwd
 ```
 
 That's it. Your plugin now intercepts every file open in the wrapped process.
@@ -168,6 +168,7 @@ fn on_open(ev: &FileOpenEvent) -> FileOpenResult {
 | [text-transform](examples/text-transform/) | Uppercases all file reads | Custom transform functions |
 | [exec-logger](examples/exec-logger/) | Logs process spawns and exits | Exec API |
 | [net-logger](examples/net-logger/) | Logs network connections and traffic | Network API |
+| [net-transform](examples/net-transform/) | Rewrites plaintext network traffic | Network transform configuration |
 
 ## File Operations
 
@@ -177,7 +178,7 @@ File operations are fully implemented. Use these to observe, block, or transform
 
 | Callback | Signature | Phase | Purpose |
 |----------|-----------|-------|---------|
-| `on_file_open` | `fn(&FileOpenEvent) -> FileOpenResult` | After open() | Decide interception |
+| `on_file_open` | `fn(&FileOpenEvent) -> FileOpenResult` | After open()/openat() | Decide interception |
 | `on_file_read` | `fn(FileState, &FileReadEvent) -> FileAction` | After read() | Observe or block |
 | `on_file_write` | `fn(FileState, &FileWriteEvent) -> FileAction` | Before write() | Observe or block |
 | `on_file_close` | `fn(FileState, &FileCloseEvent)` | After close() | Cleanup state |
@@ -483,7 +484,7 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 
 ## Network Operations
 
-> **Note:** Agent support coming soon. The SDK is stable, so you can write plugins now.
+> **Note:** Proxy-backed wrap mode already exercises this ABI today. Native agent-side network hooks are still coming.
 
 ### Callbacks
 
@@ -720,68 +721,46 @@ Output locations:
 - Shared library: `target/release/libmy_plugin.so`
 - Static archive: `target/release/libmy_plugin.a`
 
-### Using Plugins
+### Using Bundles
 
-Load plugins dynamically via `QCONTROL_PLUGINS`:
-
-```bash
-# Single plugin
-QCONTROL_PLUGINS=./my_plugin.so qcontrol wrap -- ./target
-
-# Multiple plugins (comma-separated)
-QCONTROL_PLUGINS=./logger.so,./blocker.so qcontrol wrap -- ./target
-```
-
-Or with the `--plugins` flag:
+Bundle plugins directly from plugin directories:
 
 ```bash
-qcontrol wrap --plugins ./my_plugin.so -- ./target
+qcontrol bundle --plugins ./my-plugin -o my-plugin-bundle.so
+qcontrol wrap --bundle ./my-plugin-bundle.so -- ./target
+
+# Multiple plugins
+qcontrol bundle --plugins ./logger,./blocker -o my-plugins.so
+qcontrol wrap --bundle ./my-plugins.so -- ./target
 ```
 
 ## Bundling Plugins
 
 For distribution, bundle plugins with the agent core into a single `.so` file.
 
-### Bundle Configuration
+### Creating a Bundle
 
-Create a `bundle.toml` file:
+Create the bundle directly from plugin directories:
+
+```bash
+qcontrol bundle --plugins ./file-logger,./access-control -o my-bundle.so
+```
+
+You can also pass prebuilt static archives, or use a `bundle.toml` file when you want to describe larger bundles declaratively:
 
 ```toml
 [bundle]
 output = "my-plugins.so"
 
 [[plugins]]
-source = "./file-logger"    # Plugin directory (auto-builds)
+source = "./file-logger"
 
 [[plugins]]
 source = "./access-control"
-
-[[plugins]]
-source = "./content-filter"
 ```
-
-### Creating a Bundle
-
-1. Build plugins as static archives:
-
-```bash
-# Build all plugins in examples/
-make -C examples dist
-
-# Or build individual plugin
-cd my-plugin && cargo build --release
-```
-
-2. Create the bundle:
 
 ```bash
 qcontrol bundle --config bundle.toml
-```
-
-Or manually with archive files:
-
-```bash
-qcontrol bundle --plugins plugin1.a,plugin2.a -o my-bundle.so
 ```
 
 ### Using Bundles

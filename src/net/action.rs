@@ -3,7 +3,7 @@
 //! Defines the return types for network callbacks.
 
 use crate::ffi;
-use crate::net::NetSession;
+use crate::net::{NetSession, SessionState};
 use std::ffi::c_void;
 
 /// Result returned from `on_net_connect` callback.
@@ -51,7 +51,13 @@ impl ConnectResult {
             }
             ConnectResult::State(ptr) => ffi::qcontrol_net_action_t {
                 type_: ffi::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_STATE,
-                __bindgen_anon_1: ffi::qcontrol_net_action__bindgen_ty_1 { state: ptr },
+                __bindgen_anon_1: ffi::qcontrol_net_action__bindgen_ty_1 {
+                    state: if ptr.is_null() {
+                        std::ptr::null_mut()
+                    } else {
+                        SessionState::from_raw_state(ptr)
+                    },
+                },
             },
         }
     }
@@ -102,7 +108,13 @@ impl AcceptResult {
             }
             AcceptResult::State(ptr) => ffi::qcontrol_net_action_t {
                 type_: ffi::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_STATE,
-                __bindgen_anon_1: ffi::qcontrol_net_action__bindgen_ty_1 { state: ptr },
+                __bindgen_anon_1: ffi::qcontrol_net_action__bindgen_ty_1 {
+                    state: if ptr.is_null() {
+                        std::ptr::null_mut()
+                    } else {
+                        SessionState::from_raw_state(ptr)
+                    },
+                },
             },
         }
     }

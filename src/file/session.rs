@@ -8,8 +8,8 @@ use std::ffi::{c_char, c_void, CStr};
 use std::path::Path;
 
 use crate::buffer::Buffer;
-use crate::file::{FileAction, FilePattern, FileState};
 use crate::ffi;
+use crate::file::{FileAction, FilePattern, FileState};
 
 /// Transform function type for custom transforms.
 ///
@@ -133,7 +133,8 @@ impl FileRwConfig {
 
     /// Add a pattern replacement.
     pub fn replace(mut self, needle: &str, replacement: &str) -> Self {
-        self.patterns.push(FilePattern::from_str(needle, replacement));
+        self.patterns
+            .push(FilePattern::from_str(needle, replacement));
         self
     }
 

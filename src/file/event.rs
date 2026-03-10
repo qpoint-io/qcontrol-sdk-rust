@@ -42,9 +42,7 @@ impl<'a> FileOpenEvent<'a> {
         if self.inner.path.is_null() || self.inner.path_len == 0 {
             &[]
         } else {
-            unsafe {
-                std::slice::from_raw_parts(self.inner.path as *const u8, self.inner.path_len)
-            }
+            unsafe { std::slice::from_raw_parts(self.inner.path as *const u8, self.inner.path_len) }
         }
     }
 
@@ -181,9 +179,7 @@ impl<'a> FileWriteEvent<'a> {
         if self.inner.buf.is_null() || self.inner.count == 0 {
             &[]
         } else {
-            unsafe {
-                std::slice::from_raw_parts(self.inner.buf as *const u8, self.inner.count)
-            }
+            unsafe { std::slice::from_raw_parts(self.inner.buf as *const u8, self.inner.count) }
         }
     }
 

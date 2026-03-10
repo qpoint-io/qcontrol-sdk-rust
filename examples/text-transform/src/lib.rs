@@ -141,10 +141,8 @@ fn cleanup() {
     LOGGER.log("[text_transform.rs] cleanup complete");
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_text_transform")
-        .on_init(init)
-        .on_cleanup(cleanup)
-        .on_file_open(on_open)
-        .on_file_close(on_close)
-);
+export_plugin!(PluginBuilder::new("rust_text_transform")
+    .on_init(init)
+    .on_cleanup(cleanup)
+    .on_file_open(on_open)
+    .on_file_close(on_close));

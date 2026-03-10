@@ -14,16 +14,16 @@ mod bindings {
 }
 
 // Re-export common types
-pub use bindings::QCONTROL_PLUGIN_VERSION;
 pub use bindings::qcontrol_buffer_t;
 pub use bindings::qcontrol_plugin_t;
+pub use bindings::QCONTROL_PLUGIN_VERSION;
 
 // ============================================================================
 // File types
 // ============================================================================
+pub use bindings::qcontrol_file_action__bindgen_ty_1;
 pub use bindings::qcontrol_file_action_t;
 pub use bindings::qcontrol_file_action_type_t;
-pub use bindings::qcontrol_file_action__bindgen_ty_1;
 pub use bindings::qcontrol_file_close_event_t;
 pub use bindings::qcontrol_file_ctx_t;
 pub use bindings::qcontrol_file_open_event_t;
@@ -38,9 +38,9 @@ pub use bindings::QCONTROL_FILE_FLAGS_UNCHANGED;
 // ============================================================================
 // Exec types
 // ============================================================================
+pub use bindings::qcontrol_exec_action__bindgen_ty_1;
 pub use bindings::qcontrol_exec_action_t;
 pub use bindings::qcontrol_exec_action_type_t;
-pub use bindings::qcontrol_exec_action__bindgen_ty_1;
 pub use bindings::qcontrol_exec_ctx_t;
 pub use bindings::qcontrol_exec_event_t;
 pub use bindings::qcontrol_exec_exit_event_t;
@@ -53,19 +53,19 @@ pub use bindings::qcontrol_exec_stdout_event_t;
 pub use bindings::qcontrol_exec_transform_fn;
 
 // Exec action type constants
-pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_PASS;
 pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_BLOCK;
 pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_BLOCK_ERRNO;
+pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_PASS;
 pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_SESSION;
 pub use bindings::qcontrol_exec_action_type_t_QCONTROL_EXEC_ACTION_STATE;
 
 // ============================================================================
 // Net types
 // ============================================================================
+pub use bindings::qcontrol_net_accept_event_t;
+pub use bindings::qcontrol_net_action__bindgen_ty_1;
 pub use bindings::qcontrol_net_action_t;
 pub use bindings::qcontrol_net_action_type_t;
-pub use bindings::qcontrol_net_action__bindgen_ty_1;
-pub use bindings::qcontrol_net_accept_event_t;
 pub use bindings::qcontrol_net_close_event_t;
 pub use bindings::qcontrol_net_connect_event_t;
 pub use bindings::qcontrol_net_ctx_t;
@@ -81,15 +81,15 @@ pub use bindings::qcontrol_net_tls_event_t;
 pub use bindings::qcontrol_net_transform_fn;
 
 // Net action type constants
-pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_PASS;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_BLOCK;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_BLOCK_ERRNO;
+pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_PASS;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_SESSION;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_STATE;
 
 // Net direction constants
-pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_OUTBOUND;
 pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_INBOUND;
+pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_OUTBOUND;
 
 // ============================================================================
 // Buffer functions (implemented by agent)
