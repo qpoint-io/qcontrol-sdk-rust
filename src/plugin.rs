@@ -6,6 +6,11 @@
 use crate::error::Error;
 use crate::exec::{ExecExitFn, ExecFn, ExecStderrFn, ExecStdinFn, ExecStdoutFn};
 use crate::file::{FileCloseFn, FileOpenFn, FileReadFn, FileWriteFn};
+use crate::http::{
+    HttpExchangeCloseFn, HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestFn,
+    HttpRequestTrailersFn, HttpResponseBodyFn, HttpResponseDoneFn, HttpResponseFn,
+    HttpResponseTrailersFn,
+};
 use crate::net::{AcceptFn, CloseFn, ConnectFn, DomainFn, ProtocolFn, RecvFn, SendFn, TlsFn};
 
 /// Plugin builder for configuring qcontrol plugins.
@@ -51,6 +56,16 @@ pub struct PluginBuilder {
     on_net_send: Option<SendFn>,
     on_net_recv: Option<RecvFn>,
     on_net_close: Option<CloseFn>,
+    // HTTP callbacks
+    on_http_request: Option<HttpRequestFn>,
+    on_http_request_body: Option<HttpRequestBodyFn>,
+    on_http_request_trailers: Option<HttpRequestTrailersFn>,
+    on_http_request_done: Option<HttpRequestDoneFn>,
+    on_http_response: Option<HttpResponseFn>,
+    on_http_response_body: Option<HttpResponseBodyFn>,
+    on_http_response_trailers: Option<HttpResponseTrailersFn>,
+    on_http_response_done: Option<HttpResponseDoneFn>,
+    on_http_exchange_close: Option<HttpExchangeCloseFn>,
 }
 
 impl PluginBuilder {
@@ -80,6 +95,16 @@ impl PluginBuilder {
             on_net_send: None,
             on_net_recv: None,
             on_net_close: None,
+            // HTTP
+            on_http_request: None,
+            on_http_request_body: None,
+            on_http_request_trailers: None,
+            on_http_request_done: None,
+            on_http_response: None,
+            on_http_response_body: None,
+            on_http_response_trailers: None,
+            on_http_response_done: None,
+            on_http_exchange_close: None,
         }
     }
 
@@ -244,6 +269,82 @@ impl PluginBuilder {
     }
 
     // ========================================================================
+    // HTTP callbacks
+    // ========================================================================
+
+    /// Set the HTTP request callback.
+    ///
+    /// Called when request headers arrive. Returns an action (Pass/Block/State).
+    pub const fn on_http_request(mut self, f: HttpRequestFn) -> Self {
+        self.on_http_request = Some(f);
+        self
+    }
+
+    /// Set the HTTP request body callback.
+    ///
+    /// Called for each decoded request body chunk.
+    pub const fn on_http_request_body(mut self, f: HttpRequestBodyFn) -> Self {
+        self.on_http_request_body = Some(f);
+        self
+    }
+
+    /// Set the HTTP request trailers callback.
+    ///
+    /// Called when request trailers arrive.
+    pub const fn on_http_request_trailers(mut self, f: HttpRequestTrailersFn) -> Self {
+        self.on_http_request_trailers = Some(f);
+        self
+    }
+
+    /// Set the HTTP request done callback.
+    ///
+    /// Called when the request message is complete.
+    pub const fn on_http_request_done(mut self, f: HttpRequestDoneFn) -> Self {
+        self.on_http_request_done = Some(f);
+        self
+    }
+
+    /// Set the HTTP response callback.
+    ///
+    /// Called when response headers arrive. Returns an action.
+    pub const fn on_http_response(mut self, f: HttpResponseFn) -> Self {
+        self.on_http_response = Some(f);
+        self
+    }
+
+    /// Set the HTTP response body callback.
+    ///
+    /// Called for each decoded response body chunk.
+    pub const fn on_http_response_body(mut self, f: HttpResponseBodyFn) -> Self {
+        self.on_http_response_body = Some(f);
+        self
+    }
+
+    /// Set the HTTP response trailers callback.
+    ///
+    /// Called when response trailers arrive.
+    pub const fn on_http_response_trailers(mut self, f: HttpResponseTrailersFn) -> Self {
+        self.on_http_response_trailers = Some(f);
+        self
+    }
+
+    /// Set the HTTP response done callback.
+    ///
+    /// Called when the response message is complete.
+    pub const fn on_http_response_done(mut self, f: HttpResponseDoneFn) -> Self {
+        self.on_http_response_done = Some(f);
+        self
+    }
+
+    /// Set the HTTP exchange close callback.
+    ///
+    /// Called exactly once per tracked exchange for cleanup.
+    pub const fn on_http_exchange_close(mut self, f: HttpExchangeCloseFn) -> Self {
+        self.on_http_exchange_close = Some(f);
+        self
+    }
+
+    // ========================================================================
     // Getters
     // ========================================================================
 
@@ -346,6 +447,51 @@ impl PluginBuilder {
     pub const fn get_on_net_close(&self) -> Option<CloseFn> {
         self.on_net_close
     }
+
+    /// Get the HTTP request callback.
+    pub const fn get_on_http_request(&self) -> Option<HttpRequestFn> {
+        self.on_http_request
+    }
+
+    /// Get the HTTP request body callback.
+    pub const fn get_on_http_request_body(&self) -> Option<HttpRequestBodyFn> {
+        self.on_http_request_body
+    }
+
+    /// Get the HTTP request trailers callback.
+    pub const fn get_on_http_request_trailers(&self) -> Option<HttpRequestTrailersFn> {
+        self.on_http_request_trailers
+    }
+
+    /// Get the HTTP request done callback.
+    pub const fn get_on_http_request_done(&self) -> Option<HttpRequestDoneFn> {
+        self.on_http_request_done
+    }
+
+    /// Get the HTTP response callback.
+    pub const fn get_on_http_response(&self) -> Option<HttpResponseFn> {
+        self.on_http_response
+    }
+
+    /// Get the HTTP response body callback.
+    pub const fn get_on_http_response_body(&self) -> Option<HttpResponseBodyFn> {
+        self.on_http_response_body
+    }
+
+    /// Get the HTTP response trailers callback.
+    pub const fn get_on_http_response_trailers(&self) -> Option<HttpResponseTrailersFn> {
+        self.on_http_response_trailers
+    }
+
+    /// Get the HTTP response done callback.
+    pub const fn get_on_http_response_done(&self) -> Option<HttpResponseDoneFn> {
+        self.on_http_response_done
+    }
+
+    /// Get the HTTP exchange close callback.
+    pub const fn get_on_http_exchange_close(&self) -> Option<HttpExchangeCloseFn> {
+        self.on_http_exchange_close
+    }
 }
 
 /// Wrapper to make raw plugin descriptor Sync.
@@ -385,12 +531,18 @@ unsafe impl Sync for SyncPluginDescriptor {}
 #[macro_export]
 macro_rules! export_plugin {
     ($builder:expr) => {
+        // Evaluate the builder at const time so we can inspect which callbacks
+        // were registered. This is used to conditionally populate descriptor
+        // slots — the runtime treats null vs non-null to decide whether a
+        // plugin participates in file/exec/net/http handling.
+        const __QCONTROL_BUILDER: $crate::PluginBuilder = $builder;
+
         // Store the builder in a static for access from wrapper functions
         static PLUGIN_BUILDER: std::sync::OnceLock<$crate::PluginBuilder> =
             std::sync::OnceLock::new();
 
         fn get_builder() -> &'static $crate::PluginBuilder {
-            PLUGIN_BUILDER.get_or_init(|| $builder)
+            PLUGIN_BUILDER.get_or_init(|| __QCONTROL_BUILDER)
         }
 
         // Plugin name as a null-terminated static string
@@ -831,38 +983,275 @@ macro_rules! export_plugin {
         }
 
         // ====================================================================
+        // HTTP wrappers
+        // ====================================================================
+
+        extern "C" fn __qcontrol_http_request_wrapper(
+            event: *mut $crate::ffi::qcontrol_http_request_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_request() {
+                let ev = unsafe { $crate::http::HttpRequestEvent::from_raw(event) };
+                let result = f(&ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_request_body_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_body_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_request_body() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_request_trailers_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_trailers_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_request_trailers() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_request_done_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_message_done_event_t,
+        ) {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_request_done() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpMessageDoneEvent::from_raw(event) };
+                f(file_state, &ev);
+            }
+        }
+
+        extern "C" fn __qcontrol_http_response_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_response_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_response() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpResponseEvent::from_raw(event) };
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_response_body_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_body_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_response_body() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_response_trailers_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_trailers_event_t,
+        ) -> $crate::ffi::qcontrol_http_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_response_trailers() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_http_action_t {
+                    type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
+                        state: std::ptr::null_mut(),
+                    },
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_http_response_done_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_message_done_event_t,
+        ) {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_http_response_done() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpMessageDoneEvent::from_raw(event) };
+                f(file_state, &ev);
+            }
+        }
+
+        extern "C" fn __qcontrol_http_exchange_close_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_http_exchange_close_event_t,
+        ) {
+            let builder = get_builder();
+
+            if let Some(f) = builder.get_on_http_exchange_close() {
+                let file_state = if state.is_null() {
+                    $crate::file::FileState::empty()
+                } else {
+                    unsafe {
+                        let http_state = &*(state as *const $crate::http::HttpState);
+                        http_state.as_file_state()
+                    }
+                };
+                let ev = unsafe { $crate::http::HttpExchangeCloseEvent::from_raw(event) };
+                f(file_state, &ev);
+            }
+
+            // Clean up HttpState
+            if !state.is_null() {
+                unsafe {
+                    let _ = Box::from_raw(state as *mut $crate::http::HttpState);
+                }
+            }
+        }
+
+        // ====================================================================
         // Static plugin descriptor
         // ====================================================================
 
+        // Only populate descriptor slots for callbacks the user actually
+        // registered. The runtime checks nullability to decide whether a
+        // plugin participates in file/exec/net/http handling — exporting
+        // a non-null wrapper for an unregistered callback would cause the
+        // runtime to enable unnecessary tracking/streaming for this plugin.
         #[no_mangle]
         #[used]
         pub static qcontrol_plugin: $crate::SyncPluginDescriptor =
             $crate::SyncPluginDescriptor($crate::ffi::qcontrol_plugin_t {
                 version: $crate::ffi::QCONTROL_PLUGIN_VERSION,
                 name: PLUGIN_NAME.as_ptr() as *const std::ffi::c_char,
-                // Lifecycle
+                // Lifecycle (always present — init/cleanup are cheap no-ops)
                 on_init: Some(__qcontrol_init_wrapper),
                 on_cleanup: Some(__qcontrol_cleanup_wrapper),
                 // File
-                on_file_open: Some(__qcontrol_file_open_wrapper),
-                on_file_read: Some(__qcontrol_file_read_wrapper),
-                on_file_write: Some(__qcontrol_file_write_wrapper),
-                on_file_close: Some(__qcontrol_file_close_wrapper),
+                on_file_open: if __QCONTROL_BUILDER.get_on_file_open().is_some() { Some(__qcontrol_file_open_wrapper) } else { None },
+                on_file_read: if __QCONTROL_BUILDER.get_on_file_read().is_some() { Some(__qcontrol_file_read_wrapper) } else { None },
+                on_file_write: if __QCONTROL_BUILDER.get_on_file_write().is_some() { Some(__qcontrol_file_write_wrapper) } else { None },
+                on_file_close: if __QCONTROL_BUILDER.get_on_file_close().is_some() { Some(__qcontrol_file_close_wrapper) } else { None },
                 // Exec
-                on_exec: Some(__qcontrol_exec_wrapper),
-                on_exec_stdin: Some(__qcontrol_exec_stdin_wrapper),
-                on_exec_stdout: Some(__qcontrol_exec_stdout_wrapper),
-                on_exec_stderr: Some(__qcontrol_exec_stderr_wrapper),
-                on_exec_exit: Some(__qcontrol_exec_exit_wrapper),
+                on_exec: if __QCONTROL_BUILDER.get_on_exec().is_some() { Some(__qcontrol_exec_wrapper) } else { None },
+                on_exec_stdin: if __QCONTROL_BUILDER.get_on_exec_stdin().is_some() { Some(__qcontrol_exec_stdin_wrapper) } else { None },
+                on_exec_stdout: if __QCONTROL_BUILDER.get_on_exec_stdout().is_some() { Some(__qcontrol_exec_stdout_wrapper) } else { None },
+                on_exec_stderr: if __QCONTROL_BUILDER.get_on_exec_stderr().is_some() { Some(__qcontrol_exec_stderr_wrapper) } else { None },
+                on_exec_exit: if __QCONTROL_BUILDER.get_on_exec_exit().is_some() { Some(__qcontrol_exec_exit_wrapper) } else { None },
                 // Net
-                on_net_connect: Some(__qcontrol_net_connect_wrapper),
-                on_net_accept: Some(__qcontrol_net_accept_wrapper),
-                on_net_tls: Some(__qcontrol_net_tls_wrapper),
-                on_net_domain: Some(__qcontrol_net_domain_wrapper),
-                on_net_protocol: Some(__qcontrol_net_protocol_wrapper),
-                on_net_send: Some(__qcontrol_net_send_wrapper),
-                on_net_recv: Some(__qcontrol_net_recv_wrapper),
-                on_net_close: Some(__qcontrol_net_close_wrapper),
+                on_net_connect: if __QCONTROL_BUILDER.get_on_net_connect().is_some() { Some(__qcontrol_net_connect_wrapper) } else { None },
+                on_net_accept: if __QCONTROL_BUILDER.get_on_net_accept().is_some() { Some(__qcontrol_net_accept_wrapper) } else { None },
+                on_net_tls: if __QCONTROL_BUILDER.get_on_net_tls().is_some() { Some(__qcontrol_net_tls_wrapper) } else { None },
+                on_net_domain: if __QCONTROL_BUILDER.get_on_net_domain().is_some() { Some(__qcontrol_net_domain_wrapper) } else { None },
+                on_net_protocol: if __QCONTROL_BUILDER.get_on_net_protocol().is_some() { Some(__qcontrol_net_protocol_wrapper) } else { None },
+                on_net_send: if __QCONTROL_BUILDER.get_on_net_send().is_some() { Some(__qcontrol_net_send_wrapper) } else { None },
+                on_net_recv: if __QCONTROL_BUILDER.get_on_net_recv().is_some() { Some(__qcontrol_net_recv_wrapper) } else { None },
+                on_net_close: if __QCONTROL_BUILDER.get_on_net_close().is_some() { Some(__qcontrol_net_close_wrapper) } else { None },
+                // HTTP
+                on_http_request: if __QCONTROL_BUILDER.get_on_http_request().is_some() { Some(__qcontrol_http_request_wrapper) } else { None },
+                on_http_request_body: if __QCONTROL_BUILDER.get_on_http_request_body().is_some() { Some(__qcontrol_http_request_body_wrapper) } else { None },
+                on_http_request_trailers: if __QCONTROL_BUILDER.get_on_http_request_trailers().is_some() { Some(__qcontrol_http_request_trailers_wrapper) } else { None },
+                on_http_request_done: if __QCONTROL_BUILDER.get_on_http_request_done().is_some() { Some(__qcontrol_http_request_done_wrapper) } else { None },
+                on_http_response: if __QCONTROL_BUILDER.get_on_http_response().is_some() { Some(__qcontrol_http_response_wrapper) } else { None },
+                on_http_response_body: if __QCONTROL_BUILDER.get_on_http_response_body().is_some() { Some(__qcontrol_http_response_body_wrapper) } else { None },
+                on_http_response_trailers: if __QCONTROL_BUILDER.get_on_http_response_trailers().is_some() { Some(__qcontrol_http_response_trailers_wrapper) } else { None },
+                on_http_response_done: if __QCONTROL_BUILDER.get_on_http_response_done().is_some() { Some(__qcontrol_http_response_done_wrapper) } else { None },
+                on_http_exchange_close: if __QCONTROL_BUILDER.get_on_http_exchange_close().is_some() { Some(__qcontrol_http_exchange_close_wrapper) } else { None },
             });
     };
 }

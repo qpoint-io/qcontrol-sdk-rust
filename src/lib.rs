@@ -95,6 +95,7 @@ pub mod exec;
 #[doc(hidden)]
 pub mod ffi;
 pub mod file;
+pub mod http;
 mod logger;
 pub mod net;
 mod plugin;
@@ -125,6 +126,15 @@ pub use net::{
     ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
     NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
     ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+};
+
+// Re-export http module types at top level for convenience
+pub use http::{
+    HttpAction, HttpBodyEvent, HttpBodyFlags, HttpCloseReason, HttpContext, HttpExchangeCloseEvent,
+    HttpExchangeCloseFn, HttpExchangeFlags, HttpHeader, HttpHeaders, HttpMessageDoneEvent,
+    HttpMessageKind, HttpRequestAction, HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestEvent,
+    HttpRequestFn, HttpRequestTrailersFn, HttpResponseBodyFn, HttpResponseDoneFn,
+    HttpResponseEvent, HttpResponseFn, HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
 };
 
 /// Prelude module - import all commonly used types.
@@ -160,5 +170,15 @@ pub mod prelude {
         ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
         NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
         ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+    };
+
+    // HTTP types
+    pub use crate::http::{
+        HttpAction, HttpBodyEvent, HttpBodyFlags, HttpCloseReason, HttpContext,
+        HttpExchangeCloseEvent, HttpExchangeCloseFn, HttpExchangeFlags, HttpHeader, HttpHeaders,
+        HttpMessageDoneEvent, HttpMessageKind, HttpRequestAction, HttpRequestBodyFn,
+        HttpRequestDoneFn, HttpRequestEvent, HttpRequestFn, HttpRequestTrailersFn,
+        HttpResponseBodyFn, HttpResponseDoneFn, HttpResponseEvent, HttpResponseFn,
+        HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
     };
 }
