@@ -92,6 +92,57 @@ pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_INBOUND;
 pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_OUTBOUND;
 
 // ============================================================================
+// HTTP types
+// ============================================================================
+pub use bindings::qcontrol_http_action__bindgen_ty_1;
+pub use bindings::qcontrol_http_action_t;
+pub use bindings::qcontrol_http_action_type_t;
+pub use bindings::qcontrol_http_body_event_t;
+pub use bindings::qcontrol_http_body_flag_t;
+pub use bindings::qcontrol_http_close_reason_t;
+pub use bindings::qcontrol_http_ctx_t;
+pub use bindings::qcontrol_http_exchange_close_event_t;
+pub use bindings::qcontrol_http_exchange_flag_t;
+pub use bindings::qcontrol_http_header_t;
+pub use bindings::qcontrol_http_message_done_event_t;
+pub use bindings::qcontrol_http_message_kind_t;
+pub use bindings::qcontrol_http_request_event_t;
+pub use bindings::qcontrol_http_response_event_t;
+pub use bindings::qcontrol_http_trailers_event_t;
+pub use bindings::qcontrol_http_version_t;
+
+// HTTP action type constants
+pub use bindings::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_BLOCK;
+pub use bindings::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS;
+pub use bindings::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_STATE;
+
+// HTTP version constants
+pub use bindings::qcontrol_http_version_t_QCONTROL_HTTP_VERSION_1_0;
+pub use bindings::qcontrol_http_version_t_QCONTROL_HTTP_VERSION_1_1;
+pub use bindings::qcontrol_http_version_t_QCONTROL_HTTP_VERSION_2;
+pub use bindings::qcontrol_http_version_t_QCONTROL_HTTP_VERSION_UNKNOWN;
+
+// HTTP message kind constants
+pub use bindings::qcontrol_http_message_kind_t_QCONTROL_HTTP_MESSAGE_REQUEST;
+pub use bindings::qcontrol_http_message_kind_t_QCONTROL_HTTP_MESSAGE_RESPONSE;
+
+// HTTP body flag constants
+pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_CONTENT_DECODED;
+pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_NONE;
+pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_TRANSFER_DECODED;
+
+// HTTP close reason constants
+pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_ABORTED;
+pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_COMPLETE;
+pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_CONNECTION_CLOSED;
+pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_PARSE_ERROR;
+
+// HTTP exchange flag constants
+pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_NONE;
+pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_REQUEST_DONE;
+pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_RESPONSE_DONE;
+
+// ============================================================================
 // Buffer functions (implemented by agent)
 // ============================================================================
 pub use bindings::qcontrol_buffer_append;

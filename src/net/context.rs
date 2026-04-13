@@ -24,6 +24,15 @@ impl<'a> NetContext<'a> {
         Self { inner: &*ptr }
     }
 
+    /// Create from a reference to the FFI context (embedded in another struct).
+    ///
+    /// # Safety
+    /// The reference must be valid for the lifetime 'a.
+    #[doc(hidden)]
+    pub unsafe fn from_ref(ctx: &'a ffi::qcontrol_net_ctx_t) -> Self {
+        Self { inner: ctx }
+    }
+
     /// Get the socket file descriptor.
     pub fn fd(&self) -> i32 {
         self.inner.fd

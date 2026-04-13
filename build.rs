@@ -18,6 +18,7 @@ fn main() {
     // Tell cargo to re-run if the C headers change
     println!("cargo:rerun-if-changed={}/qcontrol/common.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/file.h", c_sdk_include);
+    println!("cargo:rerun-if-changed={}/qcontrol/http.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/plugin.h", c_sdk_include);
     println!("cargo:rerun-if-changed=build.rs");
 
