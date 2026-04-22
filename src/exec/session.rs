@@ -159,94 +159,115 @@ impl ExecSession {
     /// for calling back to clean up via on_exec_exit.
     #[doc(hidden)]
     pub fn into_ffi(self) -> ffi::qcontrol_exec_session_t {
+        let ExecSession {
+            state,
+            set_path,
+            set_argv,
+            prepend_argv,
+            append_argv,
+            set_env,
+            unset_env,
+            set_cwd,
+            stdin,
+            stdout,
+            stderr,
+        } = self;
+
         // Extract transform functions from configs before moving them
-        let stdin_transform = self.stdin.as_ref().and_then(|c| c.transform);
-        let stdout_transform = self.stdout.as_ref().and_then(|c| c.transform);
-        let stderr_transform = self.stderr.as_ref().and_then(|c| c.transform);
+        let stdin_transform = stdin.as_ref().and_then(|c| c.transform);
+        let stdout_transform = stdout.as_ref().and_then(|c| c.transform);
+        let stderr_transform = stderr.as_ref().and_then(|c| c.transform);
 
         // Convert string arrays to C format
-        let (set_argv_ptrs, set_argv_strings) = strings_to_c_array(self.set_argv);
-        let (prepend_argv_ptrs, prepend_argv_strings) = strings_to_c_array(self.prepend_argv);
-        let (append_argv_ptrs, append_argv_strings) = strings_to_c_array(self.append_argv);
-        let (set_env_ptrs, set_env_strings) = strings_to_c_array(self.set_env);
-        let (unset_env_ptrs, unset_env_strings) = strings_to_c_array(self.unset_env);
+        let (set_argv_ptrs, set_argv_strings) = strings_to_c_array(set_argv);
+        let (prepend_argv_ptrs, prepend_argv_strings) = strings_to_c_array(prepend_argv);
+        let (append_argv_ptrs, append_argv_strings) = strings_to_c_array(append_argv);
+        let (set_env_ptrs, set_env_strings) = strings_to_c_array(set_env);
+        let (unset_env_ptrs, unset_env_strings) = strings_to_c_array(unset_env);
 
-        // Create SessionState wrapper
-        let session_state = SessionState {
-            user_state: self.state,
+        // Store every string and pointer array inside SessionState first, then
+        // hand raw pointers into that owned storage back through the C ABI.
+        let session_state = Box::new(SessionState {
+            user_state: state,
             stdin_transform,
             stdout_transform,
             stderr_transform,
-            _set_path: self.set_path.clone(),
-            _argv_ptrs: set_argv_ptrs.clone(),
+            _set_path: set_path,
+            _argv_ptrs: set_argv_ptrs,
             _argv_strings: set_argv_strings,
-            _prepend_argv_ptrs: prepend_argv_ptrs.clone(),
+            _prepend_argv_ptrs: prepend_argv_ptrs,
             _prepend_argv_strings: prepend_argv_strings,
-            _append_argv_ptrs: append_argv_ptrs.clone(),
+            _append_argv_ptrs: append_argv_ptrs,
             _append_argv_strings: append_argv_strings,
-            _set_env_ptrs: set_env_ptrs.clone(),
+            _set_env_ptrs: set_env_ptrs,
             _set_env_strings: set_env_strings,
-            _unset_env_ptrs: unset_env_ptrs.clone(),
+            _unset_env_ptrs: unset_env_ptrs,
             _unset_env_strings: unset_env_strings,
-            _set_cwd: self.set_cwd.clone(),
-        };
+            _set_cwd: set_cwd,
+        });
 
-        // Leak SessionState - will be freed in exit callback
-        let state_ptr = Box::into_raw(Box::new(session_state)) as *mut c_void;
-
-        // Get pointers for C arrays
-        let set_argv_ptr = set_argv_ptrs
+        let set_path_ptr = session_state
+            ._set_path
+            .as_ref()
+            .map(|s| s.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let set_argv_ptr = session_state
+            ._argv_ptrs
             .as_ref()
             .map(|v| v.as_ptr())
             .unwrap_or(std::ptr::null());
-        let prepend_argv_ptr = prepend_argv_ptrs
+        let prepend_argv_ptr = session_state
+            ._prepend_argv_ptrs
             .as_ref()
             .map(|v| v.as_ptr())
             .unwrap_or(std::ptr::null());
-        let append_argv_ptr = append_argv_ptrs
+        let append_argv_ptr = session_state
+            ._append_argv_ptrs
             .as_ref()
             .map(|v| v.as_ptr())
             .unwrap_or(std::ptr::null());
-        let set_env_ptr = set_env_ptrs
+        let set_env_ptr = session_state
+            ._set_env_ptrs
             .as_ref()
             .map(|v| v.as_ptr())
             .unwrap_or(std::ptr::null());
-        let unset_env_ptr = unset_env_ptrs
+        let unset_env_ptr = session_state
+            ._unset_env_ptrs
             .as_ref()
             .map(|v| v.as_ptr())
+            .unwrap_or(std::ptr::null());
+        let set_cwd_ptr = session_state
+            ._set_cwd
+            .as_ref()
+            .map(|s| s.as_ptr())
             .unwrap_or(std::ptr::null());
 
         // Leak configs
-        let stdin_ptr = match self.stdin {
+        let stdin_ptr = match stdin {
             Some(cfg) => Box::into_raw(rw_config_to_ffi(*cfg, IoType::Stdin)),
             None => std::ptr::null_mut(),
         };
-        let stdout_ptr = match self.stdout {
+        let stdout_ptr = match stdout {
             Some(cfg) => Box::into_raw(rw_config_to_ffi(*cfg, IoType::Stdout)),
             None => std::ptr::null_mut(),
         };
-        let stderr_ptr = match self.stderr {
+        let stderr_ptr = match stderr {
             Some(cfg) => Box::into_raw(rw_config_to_ffi(*cfg, IoType::Stderr)),
             None => std::ptr::null_mut(),
         };
 
+        // Leak SessionState - will be freed in exit callback.
+        let state_ptr = Box::into_raw(session_state) as *mut c_void;
+
         ffi::qcontrol_exec_session_t {
             state: state_ptr,
-            set_path: self
-                .set_path
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null()),
+            set_path: set_path_ptr,
             set_argv: set_argv_ptr,
             prepend_argv: prepend_argv_ptr,
             append_argv: append_argv_ptr,
             set_env: set_env_ptr,
             unset_env: unset_env_ptr,
-            set_cwd: self
-                .set_cwd
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null()),
+            set_cwd: set_cwd_ptr,
             stdin_config: stdin_ptr,
             stdout_config: stdout_ptr,
             stderr_config: stderr_ptr,
