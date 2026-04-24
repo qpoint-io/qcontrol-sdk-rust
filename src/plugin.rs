@@ -1223,35 +1223,146 @@ macro_rules! export_plugin {
                 on_init: Some(__qcontrol_init_wrapper),
                 on_cleanup: Some(__qcontrol_cleanup_wrapper),
                 // File
-                on_file_open: if __QCONTROL_BUILDER.get_on_file_open().is_some() { Some(__qcontrol_file_open_wrapper) } else { None },
-                on_file_read: if __QCONTROL_BUILDER.get_on_file_read().is_some() { Some(__qcontrol_file_read_wrapper) } else { None },
-                on_file_write: if __QCONTROL_BUILDER.get_on_file_write().is_some() { Some(__qcontrol_file_write_wrapper) } else { None },
-                on_file_close: if __QCONTROL_BUILDER.get_on_file_close().is_some() { Some(__qcontrol_file_close_wrapper) } else { None },
+                on_file_open: if __QCONTROL_BUILDER.get_on_file_open().is_some() {
+                    Some(__qcontrol_file_open_wrapper)
+                } else {
+                    None
+                },
+                on_file_read: if __QCONTROL_BUILDER.get_on_file_read().is_some() {
+                    Some(__qcontrol_file_read_wrapper)
+                } else {
+                    None
+                },
+                on_file_write: if __QCONTROL_BUILDER.get_on_file_write().is_some() {
+                    Some(__qcontrol_file_write_wrapper)
+                } else {
+                    None
+                },
+                on_file_close: if __QCONTROL_BUILDER.get_on_file_close().is_some() {
+                    Some(__qcontrol_file_close_wrapper)
+                } else {
+                    None
+                },
                 // Exec
-                on_exec: if __QCONTROL_BUILDER.get_on_exec().is_some() { Some(__qcontrol_exec_wrapper) } else { None },
-                on_exec_stdin: if __QCONTROL_BUILDER.get_on_exec_stdin().is_some() { Some(__qcontrol_exec_stdin_wrapper) } else { None },
-                on_exec_stdout: if __QCONTROL_BUILDER.get_on_exec_stdout().is_some() { Some(__qcontrol_exec_stdout_wrapper) } else { None },
-                on_exec_stderr: if __QCONTROL_BUILDER.get_on_exec_stderr().is_some() { Some(__qcontrol_exec_stderr_wrapper) } else { None },
-                on_exec_exit: if __QCONTROL_BUILDER.get_on_exec_exit().is_some() { Some(__qcontrol_exec_exit_wrapper) } else { None },
+                on_exec: if __QCONTROL_BUILDER.get_on_exec().is_some() {
+                    Some(__qcontrol_exec_wrapper)
+                } else {
+                    None
+                },
+                on_exec_stdin: if __QCONTROL_BUILDER.get_on_exec_stdin().is_some() {
+                    Some(__qcontrol_exec_stdin_wrapper)
+                } else {
+                    None
+                },
+                on_exec_stdout: if __QCONTROL_BUILDER.get_on_exec_stdout().is_some() {
+                    Some(__qcontrol_exec_stdout_wrapper)
+                } else {
+                    None
+                },
+                on_exec_stderr: if __QCONTROL_BUILDER.get_on_exec_stderr().is_some() {
+                    Some(__qcontrol_exec_stderr_wrapper)
+                } else {
+                    None
+                },
+                on_exec_exit: if __QCONTROL_BUILDER.get_on_exec_exit().is_some() {
+                    Some(__qcontrol_exec_exit_wrapper)
+                } else {
+                    None
+                },
                 // Net
-                on_net_connect: if __QCONTROL_BUILDER.get_on_net_connect().is_some() { Some(__qcontrol_net_connect_wrapper) } else { None },
-                on_net_accept: if __QCONTROL_BUILDER.get_on_net_accept().is_some() { Some(__qcontrol_net_accept_wrapper) } else { None },
-                on_net_tls: if __QCONTROL_BUILDER.get_on_net_tls().is_some() { Some(__qcontrol_net_tls_wrapper) } else { None },
-                on_net_domain: if __QCONTROL_BUILDER.get_on_net_domain().is_some() { Some(__qcontrol_net_domain_wrapper) } else { None },
-                on_net_protocol: if __QCONTROL_BUILDER.get_on_net_protocol().is_some() { Some(__qcontrol_net_protocol_wrapper) } else { None },
-                on_net_send: if __QCONTROL_BUILDER.get_on_net_send().is_some() { Some(__qcontrol_net_send_wrapper) } else { None },
-                on_net_recv: if __QCONTROL_BUILDER.get_on_net_recv().is_some() { Some(__qcontrol_net_recv_wrapper) } else { None },
-                on_net_close: if __QCONTROL_BUILDER.get_on_net_close().is_some() { Some(__qcontrol_net_close_wrapper) } else { None },
+                on_net_connect: if __QCONTROL_BUILDER.get_on_net_connect().is_some() {
+                    Some(__qcontrol_net_connect_wrapper)
+                } else {
+                    None
+                },
+                on_net_accept: if __QCONTROL_BUILDER.get_on_net_accept().is_some() {
+                    Some(__qcontrol_net_accept_wrapper)
+                } else {
+                    None
+                },
+                on_net_tls: if __QCONTROL_BUILDER.get_on_net_tls().is_some() {
+                    Some(__qcontrol_net_tls_wrapper)
+                } else {
+                    None
+                },
+                on_net_domain: if __QCONTROL_BUILDER.get_on_net_domain().is_some() {
+                    Some(__qcontrol_net_domain_wrapper)
+                } else {
+                    None
+                },
+                on_net_protocol: if __QCONTROL_BUILDER.get_on_net_protocol().is_some() {
+                    Some(__qcontrol_net_protocol_wrapper)
+                } else {
+                    None
+                },
+                on_net_send: if __QCONTROL_BUILDER.get_on_net_send().is_some() {
+                    Some(__qcontrol_net_send_wrapper)
+                } else {
+                    None
+                },
+                on_net_recv: if __QCONTROL_BUILDER.get_on_net_recv().is_some() {
+                    Some(__qcontrol_net_recv_wrapper)
+                } else {
+                    None
+                },
+                on_net_close: if __QCONTROL_BUILDER.get_on_net_close().is_some() {
+                    Some(__qcontrol_net_close_wrapper)
+                } else {
+                    None
+                },
                 // HTTP
-                on_http_request: if __QCONTROL_BUILDER.get_on_http_request().is_some() { Some(__qcontrol_http_request_wrapper) } else { None },
-                on_http_request_body: if __QCONTROL_BUILDER.get_on_http_request_body().is_some() { Some(__qcontrol_http_request_body_wrapper) } else { None },
-                on_http_request_trailers: if __QCONTROL_BUILDER.get_on_http_request_trailers().is_some() { Some(__qcontrol_http_request_trailers_wrapper) } else { None },
-                on_http_request_done: if __QCONTROL_BUILDER.get_on_http_request_done().is_some() { Some(__qcontrol_http_request_done_wrapper) } else { None },
-                on_http_response: if __QCONTROL_BUILDER.get_on_http_response().is_some() { Some(__qcontrol_http_response_wrapper) } else { None },
-                on_http_response_body: if __QCONTROL_BUILDER.get_on_http_response_body().is_some() { Some(__qcontrol_http_response_body_wrapper) } else { None },
-                on_http_response_trailers: if __QCONTROL_BUILDER.get_on_http_response_trailers().is_some() { Some(__qcontrol_http_response_trailers_wrapper) } else { None },
-                on_http_response_done: if __QCONTROL_BUILDER.get_on_http_response_done().is_some() { Some(__qcontrol_http_response_done_wrapper) } else { None },
-                on_http_exchange_close: if __QCONTROL_BUILDER.get_on_http_exchange_close().is_some() { Some(__qcontrol_http_exchange_close_wrapper) } else { None },
+                on_http_request: if __QCONTROL_BUILDER.get_on_http_request().is_some() {
+                    Some(__qcontrol_http_request_wrapper)
+                } else {
+                    None
+                },
+                on_http_request_body: if __QCONTROL_BUILDER.get_on_http_request_body().is_some() {
+                    Some(__qcontrol_http_request_body_wrapper)
+                } else {
+                    None
+                },
+                on_http_request_trailers: if __QCONTROL_BUILDER
+                    .get_on_http_request_trailers()
+                    .is_some()
+                {
+                    Some(__qcontrol_http_request_trailers_wrapper)
+                } else {
+                    None
+                },
+                on_http_request_done: if __QCONTROL_BUILDER.get_on_http_request_done().is_some() {
+                    Some(__qcontrol_http_request_done_wrapper)
+                } else {
+                    None
+                },
+                on_http_response: if __QCONTROL_BUILDER.get_on_http_response().is_some() {
+                    Some(__qcontrol_http_response_wrapper)
+                } else {
+                    None
+                },
+                on_http_response_body: if __QCONTROL_BUILDER.get_on_http_response_body().is_some() {
+                    Some(__qcontrol_http_response_body_wrapper)
+                } else {
+                    None
+                },
+                on_http_response_trailers: if __QCONTROL_BUILDER
+                    .get_on_http_response_trailers()
+                    .is_some()
+                {
+                    Some(__qcontrol_http_response_trailers_wrapper)
+                } else {
+                    None
+                },
+                on_http_response_done: if __QCONTROL_BUILDER.get_on_http_response_done().is_some() {
+                    Some(__qcontrol_http_response_done_wrapper)
+                } else {
+                    None
+                },
+                on_http_exchange_close: if __QCONTROL_BUILDER.get_on_http_exchange_close().is_some()
+                {
+                    Some(__qcontrol_http_exchange_close_wrapper)
+                } else {
+                    None
+                },
             });
     };
 }

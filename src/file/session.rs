@@ -30,6 +30,8 @@ pub struct SessionState {
     pub read_transform: Option<FileTransformFn>,
     /// Write transform function (may be None).
     pub write_transform: Option<FileTransformFn>,
+    /// Owned redirected path bytes used by the exported `set_path` pointer.
+    _set_path: Option<std::ffi::CString>,
 }
 
 impl SessionState {
@@ -191,10 +193,9 @@ impl FileSession {
             user_state: self.state,
             read_transform,
             write_transform,
+            _set_path: self.set_path,
         };
-
-        // Leak SessionState - will be freed in close callback
-        let state_ptr = Box::into_raw(Box::new(session_state)) as *mut c_void;
+        let session_state = Box::new(session_state);
 
         // Leak read config
         let read_ptr = match self.read {
@@ -208,11 +209,15 @@ impl FileSession {
             None => std::ptr::null_mut(),
         };
 
-        // Handle set_path - leak the CString
-        let set_path_ptr = match self.set_path {
-            Some(path) => Box::into_raw(Box::new(path)) as *const c_char,
+        // Keep the redirected path owned by SessionState so the exported C
+        // pointer remains valid until on_file_close frees the state wrapper.
+        let set_path_ptr = match session_state._set_path.as_ref() {
+            Some(path) => path.as_ptr() as *const c_char,
             None => std::ptr::null(),
         };
+
+        // Leak SessionState - will be freed in close callback
+        let state_ptr = Box::into_raw(session_state) as *mut c_void;
 
         // Handle set_flags
         let set_flags = self.set_flags.unwrap_or(ffi::QCONTROL_FILE_FLAGS_UNCHANGED);
@@ -227,6 +232,37 @@ impl FileSession {
             set_mode,
             read: read_ptr,
             write: write_ptr,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Verifies the file-session FFI conversion used by the Rust SDK.
+
+    use super::{FileRwConfig, FileSession};
+
+    /// Preserve the redirected path bytes behind the exported FFI pointer so
+    /// file-session rewrites remain valid until close cleanup.
+    #[test]
+    fn into_ffi_preserves_set_path_pointer() {
+        let ffi = FileSession::builder()
+            .set_path("/tmp/rewritten.txt")
+            .read(FileRwConfig::new().prefix_str("prefix"))
+            .build()
+            .into_ffi();
+
+        let actual = unsafe { std::ffi::CStr::from_ptr(ffi.set_path) }
+            .to_str()
+            .expect("ffi set_path should be valid utf-8");
+
+        assert_eq!(actual, "/tmp/rewritten.txt");
+
+        // Match the SDK/plugin runtime cleanup model by reclaiming the leaked
+        // session state and read config after the assertion completes.
+        unsafe {
+            let _ = Box::from_raw(ffi.state as *mut super::SessionState);
+            let _ = Box::from_raw(ffi.read);
         }
     }
 }
