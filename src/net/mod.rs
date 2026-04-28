@@ -21,8 +21,8 @@ pub use event::{
 pub use pattern::NetPattern;
 pub use session::{NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn, SessionState};
 
-// Re-export FileState for convenience (used in callbacks)
-pub use crate::file::FileState;
+// Re-export plugin state for convenience (used in callbacks)
+pub use crate::state::{FileState, PluginState};
 
 // Re-export Buffer from parent module for convenience
 pub use crate::buffer::Buffer;
@@ -40,29 +40,29 @@ pub type AcceptFn = fn(&AcceptEvent) -> AcceptResult;
 /// Callback type for TLS events.
 ///
 /// Receives the session state and TLS event. Called when TLS handshake completes.
-pub type TlsFn = fn(FileState, &TlsEvent);
+pub type TlsFn = fn(PluginState, &TlsEvent);
 
 /// Callback type for domain events.
 ///
 /// Receives the session state and domain event. Called when domain is discovered.
-pub type DomainFn = fn(FileState, &DomainEvent);
+pub type DomainFn = fn(PluginState, &DomainEvent);
 
 /// Callback type for protocol events.
 ///
 /// Receives the session state and protocol event. Called when protocol is detected.
-pub type ProtocolFn = fn(FileState, &ProtocolEvent);
+pub type ProtocolFn = fn(PluginState, &ProtocolEvent);
 
 /// Callback type for send events.
 ///
 /// Receives the session state and send event, returns an action.
-pub type SendFn = fn(FileState, &SendEvent) -> NetAction;
+pub type SendFn = fn(PluginState, &SendEvent) -> NetAction;
 
 /// Callback type for recv events.
 ///
 /// Receives the session state and recv event, returns an action.
-pub type RecvFn = fn(FileState, &RecvEvent) -> NetAction;
+pub type RecvFn = fn(PluginState, &RecvEvent) -> NetAction;
 
 /// Callback type for close events.
 ///
 /// Receives the session state and close event. Called for cleanup.
-pub type CloseFn = fn(FileState, &CloseEvent);
+pub type CloseFn = fn(PluginState, &CloseEvent);

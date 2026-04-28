@@ -75,7 +75,7 @@
 //!     FileOpenResult::Pass
 //! }
 //!
-//! fn on_close(state: FileState, _ev: &FileCloseEvent) {
+//! fn on_close(state: PluginState, _ev: &FileCloseEvent) {
 //!     if let Some(s) = state.downcast_ref::<MyState>() {
 //!         eprintln!("Total bytes read: {}", s.bytes_read);
 //!     }
@@ -99,18 +99,20 @@ pub mod http;
 mod logger;
 pub mod net;
 mod plugin;
+mod state;
 
 // Re-export public API
-pub use buffer::Buffer;
+pub use buffer::{Buffer, BufferRef};
 pub use error::Error;
 pub use logger::Logger;
 pub use plugin::{PluginBuilder, SyncPluginDescriptor};
+pub use state::{FileState, PluginState};
 
 // Re-export file module types at top level for convenience
 pub use file::{
     FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpenEvent, FileOpenFn,
     FileOpenResult, FilePattern, FileReadEvent, FileReadFn, FileRwConfig, FileSession,
-    FileSessionBuilder, FileState, FileTransformFn, FileWriteEvent, FileWriteFn,
+    FileSessionBuilder, FileTransformFn, FileWriteEvent, FileWriteFn,
 };
 
 // Re-export exec module types at top level for convenience
@@ -130,11 +132,12 @@ pub use net::{
 
 // Re-export http module types at top level for convenience
 pub use http::{
-    HttpAction, HttpBodyEvent, HttpBodyFlags, HttpCloseReason, HttpContext, HttpExchangeCloseEvent,
-    HttpExchangeCloseFn, HttpExchangeFlags, HttpHeader, HttpHeaders, HttpMessageDoneEvent,
-    HttpMessageKind, HttpRequestAction, HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestEvent,
-    HttpRequestFn, HttpRequestTrailersFn, HttpResponseBodyFn, HttpResponseDoneFn,
-    HttpResponseEvent, HttpResponseFn, HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
+    HttpAction, HttpBodyEvent, HttpBodyFlags, HttpBodyMode, HttpBodySetJsonError, HttpCloseReason,
+    HttpContext, HttpExchangeCloseEvent, HttpExchangeCloseFn, HttpExchangeFlags, HttpHeader,
+    HttpHeaders, HttpHeadersMut, HttpMessageDoneEvent, HttpMessageKind, HttpRequestAction,
+    HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestEvent, HttpRequestFn, HttpRequestHead,
+    HttpRequestTrailersFn, HttpResponseBodyFn, HttpResponseDoneFn, HttpResponseEvent,
+    HttpResponseFn, HttpResponseHead, HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
 };
 
 /// Prelude module - import all commonly used types.
@@ -154,8 +157,9 @@ pub mod prelude {
     pub use crate::file::{
         FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpenEvent, FileOpenFn,
         FileOpenResult, FilePattern, FileReadEvent, FileReadFn, FileRwConfig, FileSession,
-        FileSessionBuilder, FileState, FileTransformFn, FileWriteEvent, FileWriteFn,
+        FileSessionBuilder, FileTransformFn, FileWriteEvent, FileWriteFn,
     };
+    pub use crate::{FileState, PluginState};
 
     // Exec types
     pub use crate::exec::{
@@ -174,11 +178,12 @@ pub mod prelude {
 
     // HTTP types
     pub use crate::http::{
-        HttpAction, HttpBodyEvent, HttpBodyFlags, HttpCloseReason, HttpContext,
-        HttpExchangeCloseEvent, HttpExchangeCloseFn, HttpExchangeFlags, HttpHeader, HttpHeaders,
-        HttpMessageDoneEvent, HttpMessageKind, HttpRequestAction, HttpRequestBodyFn,
-        HttpRequestDoneFn, HttpRequestEvent, HttpRequestFn, HttpRequestTrailersFn,
-        HttpResponseBodyFn, HttpResponseDoneFn, HttpResponseEvent, HttpResponseFn,
+        HttpAction, HttpBodyEvent, HttpBodyFlags, HttpBodyMode, HttpBodySetJsonError,
+        HttpCloseReason, HttpContext, HttpExchangeCloseEvent, HttpExchangeCloseFn,
+        HttpExchangeFlags, HttpHeader, HttpHeaders, HttpHeadersMut, HttpMessageDoneEvent,
+        HttpMessageKind, HttpRequestAction, HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestEvent,
+        HttpRequestFn, HttpRequestHead, HttpRequestTrailersFn, HttpResponseBodyFn,
+        HttpResponseDoneFn, HttpResponseEvent, HttpResponseFn, HttpResponseHead,
         HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
     };
 }

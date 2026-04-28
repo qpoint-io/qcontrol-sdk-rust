@@ -30,6 +30,7 @@ fn main() {
         .allowlist_type("qcontrol_.*")
         .allowlist_var("QCONTROL_.*")
         .allowlist_function("qcontrol_buffer_.*")
+        .allowlist_function("qcontrol_http_.*")
         // Use core types for no_std compatibility
         .use_core()
         // Generate rustified enums

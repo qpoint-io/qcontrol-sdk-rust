@@ -6,7 +6,7 @@ Intercept. Observe. Transform. Build secure sandboxes for AI agents and control 
 
 **Overview:** [Introduction](#introduction) · [What Can You Build?](#what-can-you-build) · [Quick Start](#quick-start) · [Core Concepts](#core-concepts) · [Examples](#examples)
 
-**API Reference:** [File Operations](#file-operations) · [Exec Operations](#exec-operations) · [Network Operations](#network-operations)
+**API Reference:** [File Operations](#file-operations) · [Exec Operations](#exec-operations) · [Network Operations](#network-operations) · [HTTP Operations](#http-operations)
 
 **Development:** [Building Plugins](#building-plugins) · [Bundling Plugins](#bundling-plugins) · [Environment Variables](#environment-variables)
 
@@ -21,6 +21,7 @@ This makes Qcontrol ideal for building **AI agent sandboxes and runtimes**. As a
 - **Intercept file operations** — See every open, read, write, and close. Block access to sensitive paths or transform data as it flows through.
 - **Intercept exec operations** — Monitor process spawning, modify arguments, capture stdin/stdout/stderr.
 - **Intercept network operations** — Watch connections form, inspect send/recv traffic, detect TLS and protocols.
+- **Intercept HTTP operations** — Observe and rewrite request/response heads, headers, bodies, and trailers through one exchange-based ABI.
 
 Your plugins run inside the target process via native function hooking. Observe silently, block operations, or transform data in transit. No application changes required.
 
@@ -30,6 +31,7 @@ The SDK handles all FFI internally. You write safe, idiomatic Rust.
 
 | Category | What You Can Do | Example Plugin |
 |----------|-----------------|----------------|
+| **HTTP Policy & Rewrites** | Normalize headers, rewrite bodies inline, and attach per-exchange state | [http-rewrite](examples/http-rewrite/) |
 | **AI Agent Sandboxes** | Constrain file access, limit network destinations, audit all agent actions | [access-control](examples/access-control/) |
 | **Agent Runtimes** | Build secure execution environments with fine-grained syscall control | [file-logger](examples/file-logger/) |
 | **Security** | Enforce allowlists, block sensitive paths, create application sandboxes | [access-control](examples/access-control/) |
@@ -68,13 +70,14 @@ That's it. Your plugin now intercepts every file open in the wrapped process.
 
 ### Hooks
 
-Qcontrol intercepts operations at three levels:
+Qcontrol intercepts operations across four domains:
 
 | Domain | Operations | Status |
 |--------|------------|--------|
 | **File** | open, read, write, close | Fully implemented |
 | **Exec** | spawn, stdin, stdout, stderr, exit | SDK ready, agent coming soon |
 | **Network** | connect, accept, send, recv, close | SDK ready, agent coming soon |
+| **HTTP** | request/response heads, bodies, trailers, done, exchange close | SDK ready, proxy-backed wrap mode available today |
 
 ### Actions
 
@@ -169,6 +172,8 @@ fn on_open(ev: &FileOpenEvent) -> FileOpenResult {
 | [exec-logger](examples/exec-logger/) | Logs process spawns and exits | Exec API |
 | [net-logger](examples/net-logger/) | Logs network connections and traffic | Network API |
 | [net-transform](examples/net-transform/) | Rewrites plaintext network traffic | Network transform configuration |
+| [http-logger](examples/http-logger/) | Logs the full HTTP exchange lifecycle | HTTP callbacks and exchange state |
+| [http-rewrite](examples/http-rewrite/) | Rewrites headers and buffered response bodies inline | HTTP mutation and body scheduling |
 
 ## File Operations
 
@@ -389,10 +394,10 @@ let my_patterns = vec![
 | Callback | Signature | Phase | Purpose |
 |----------|-----------|-------|---------|
 | `on_exec` | `fn(&ExecEvent) -> ExecResult` | Before exec | Decide interception |
-| `on_exec_stdin` | `fn(FileState, &StdinEvent) -> ExecAction` | Before stdin write | Observe or block |
-| `on_exec_stdout` | `fn(FileState, &StdoutEvent) -> ExecAction` | After stdout read | Observe or block |
-| `on_exec_stderr` | `fn(FileState, &StderrEvent) -> ExecAction` | After stderr read | Observe or block |
-| `on_exec_exit` | `fn(FileState, &ExitEvent)` | After exit | Cleanup state |
+| `on_exec_stdin` | `fn(PluginState, &StdinEvent) -> ExecAction` | Before stdin write | Observe or block |
+| `on_exec_stdout` | `fn(PluginState, &StdoutEvent) -> ExecAction` | After stdout read | Observe or block |
+| `on_exec_stderr` | `fn(PluginState, &StderrEvent) -> ExecAction` | After stderr read | Observe or block |
+| `on_exec_exit` | `fn(PluginState, &ExitEvent)` | After exit | Cleanup state |
 
 ### Events
 
@@ -492,12 +497,12 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 |----------|-----------|-------|---------|
 | `on_net_connect` | `fn(&ConnectEvent) -> ConnectResult` | After connect() | Decide interception |
 | `on_net_accept` | `fn(&AcceptEvent) -> AcceptResult` | After accept() | Decide interception |
-| `on_net_tls` | `fn(FileState, &TlsEvent)` | After TLS handshake | Observe |
-| `on_net_domain` | `fn(FileState, &DomainEvent)` | Domain discovered | Observe |
-| `on_net_protocol` | `fn(FileState, &ProtocolEvent)` | Protocol detected | Observe |
-| `on_net_send` | `fn(FileState, &SendEvent) -> NetAction` | Before send | Observe or block |
-| `on_net_recv` | `fn(FileState, &RecvEvent) -> NetAction` | After recv | Observe or block |
-| `on_net_close` | `fn(FileState, &NetCloseEvent)` | After close | Cleanup state |
+| `on_net_tls` | `fn(PluginState, &TlsEvent)` | After TLS handshake | Observe |
+| `on_net_domain` | `fn(PluginState, &DomainEvent)` | Domain discovered | Observe |
+| `on_net_protocol` | `fn(PluginState, &ProtocolEvent)` | Protocol detected | Observe |
+| `on_net_send` | `fn(PluginState, &SendEvent) -> NetAction` | Before send | Observe or block |
+| `on_net_recv` | `fn(PluginState, &RecvEvent) -> NetAction` | After recv | Observe or block |
+| `on_net_close` | `fn(PluginState, &NetCloseEvent)` | After close | Cleanup state |
 
 ### Events
 
@@ -632,6 +637,189 @@ The `NetContext` type in transform functions provides connection metadata:
 | `domain()` | `Option<&str>` | Domain name (if discovered) |
 | `protocol()` | `Option<&str>` | Protocol (if detected) |
 
+## HTTP Operations
+
+> **Note:** Proxy-backed wrap mode already exercises this ABI today. HTTP mutation is host-backed, so helpers like `head_mut()`, `headers_mut()`, and `body_mut()` return `None` when the current host/path only supports read-only observation.
+
+### Callbacks
+
+| Callback | Signature | Phase | Purpose |
+|----------|-----------|-------|---------|
+| `on_http_request` | `fn(&mut HttpRequestEvent) -> HttpRequestAction` | Request head | Observe, block, attach exchange state, request body scheduling |
+| `on_http_request_body` | `fn(PluginState, &mut HttpBodyEvent) -> HttpAction` | Request body | Observe, block, or rewrite body chunks |
+| `on_http_request_trailers` | `fn(PluginState, &mut HttpTrailersEvent) -> HttpAction` | Request trailers | Observe, block, or rewrite trailers |
+| `on_http_request_done` | `fn(PluginState, &HttpMessageDoneEvent)` | Request complete | Bookkeeping after the request finishes |
+| `on_http_response` | `fn(PluginState, &mut HttpResponseEvent) -> HttpAction` | Response head | Observe, block, rewrite headers/status, request body scheduling |
+| `on_http_response_body` | `fn(PluginState, &mut HttpBodyEvent) -> HttpAction` | Response body | Observe, block, or rewrite body chunks |
+| `on_http_response_trailers` | `fn(PluginState, &mut HttpTrailersEvent) -> HttpAction` | Response trailers | Observe, block, or rewrite trailers |
+| `on_http_response_done` | `fn(PluginState, &HttpMessageDoneEvent)` | Response complete | Bookkeeping after the response finishes |
+| `on_http_exchange_close` | `fn(PluginState, &HttpExchangeCloseEvent)` | Exchange close | Final cleanup for tracked exchanges |
+
+`PluginState` provides access to state attached from `on_http_request`. `FileState` remains a backward-compatible alias, but `PluginState` is the protocol-neutral name used by exec, net, and HTTP callbacks.
+
+### Actions and Body Scheduling
+
+**HttpRequestAction** — returned from `on_http_request`:
+
+| Variant | Description |
+|---------|-------------|
+| `HttpRequestAction::Pass` | Continue normally |
+| `HttpRequestAction::Block` | Reject the exchange |
+| `HttpRequestAction::State(Box<dyn Any + Send>)` | Attach per-exchange state for later callbacks |
+
+**HttpAction** — returned from body, trailers, and response callbacks:
+
+| Variant | Description |
+|---------|-------------|
+| `HttpAction::Pass` | Continue normally |
+| `HttpAction::Block` | Reject the exchange |
+
+Use `.with_body_mode(...)` on `HttpRequestAction::Pass`, `HttpRequestAction::State(...)`, or `HttpAction::Pass` when you need host-managed request or response body scheduling:
+
+| Mode | Meaning |
+|------|---------|
+| `HttpBodyMode::Default` | Preserve the host's default body scheduling |
+| `HttpBodyMode::Stream` | Deliver decoded body callbacks incrementally |
+| `HttpBodyMode::Buffer` | Buffer the logical decoded body before body callbacks run |
+
+`HttpBodyMode::Buffer` is the mode to request when you need full-body rewrites, such as JSON normalization after the last chunk.
+
+### Events
+
+**HttpRequestEvent** — passed to `on_http_request`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata plus the underlying `NetContext` |
+| `raw_target_str()` | `Option<&str>` | Raw request-target as UTF-8 |
+| `method_str()` | `Option<&str>` | Normalized method |
+| `scheme_str()` | `Option<&str>` | Normalized scheme, if present |
+| `authority_str()` | `Option<&str>` | Normalized authority, if present |
+| `path_str()` | `Option<&str>` | Normalized path |
+| `header_count()` | `usize` | Request header count |
+| `headers()` | `HttpHeaders` | Iterate request headers |
+| `header(&[u8])` | `Option<&[u8]>` | Look up the first matching header |
+| `head()` / `head_mut()` | `Option<HttpRequestHeadRef>` / `Option<HttpRequestHead>` | Read or rewrite method, scheme, authority, and path |
+| `headers_mut()` | `Option<HttpHeadersMut>` | Add, replace, or remove request headers |
+
+**HttpResponseEvent** — passed to `on_http_response`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata plus the underlying `NetContext` |
+| `status_code()` | `u16` | Current status code |
+| `reason_str()` | `Option<&str>` | Reason phrase, if present |
+| `header_count()` | `usize` | Response header count |
+| `headers()` | `HttpHeaders` | Iterate response headers |
+| `header(&[u8])` | `Option<&[u8]>` | Look up the first matching header |
+| `head()` / `head_mut()` | `Option<HttpResponseHeadRef>` / `Option<HttpResponseHead>` | Read or rewrite status and reason |
+| `headers_mut()` | `Option<HttpHeadersMut>` | Add, replace, or remove response headers |
+
+**HttpBodyEvent** — passed to request and response body callbacks:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata |
+| `kind()` | `HttpMessageKind` | `Request` or `Response` |
+| `bytes()` / `bytes_str()` | `&[u8]` / `Option<&str>` | Decoded input bytes for this callback |
+| `body()` / `body_mut()` | `Option<BufferRef>` / `Option<Buffer>` | Host-backed output buffer for inline edits |
+| `body_bytes()` / `body_str()` | `Option<&[u8]>` / `Option<&str>` | Current output buffer contents |
+| `body_json::<T>()` | `serde_json::Result<T>` | Decode the current body as JSON |
+| `set_body_json(&T)` | `Result<(), HttpBodySetJsonError>` | Serialize one value and replace the mutable body |
+| `offset()` | `u64` | Decoded offset within the current message body |
+| `flags()` | `HttpBodyFlags` | Transfer/content decoding flags |
+| `end_of_stream()` | `bool` | Whether this callback carries the terminal body bytes |
+
+**HttpTrailersEvent** — passed to trailer callbacks:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `kind()` | `HttpMessageKind` | `Request` or `Response` |
+| `header_count()` | `usize` | Trailer count |
+| `headers()` | `HttpHeaders` | Iterate trailer headers |
+| `headers_mut()` | `Option<HttpHeadersMut>` | Rewrite trailer headers when supported |
+
+**HttpMessageDoneEvent** — passed to `on_http_request_done` and `on_http_response_done`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata |
+| `kind()` | `HttpMessageKind` | Completed message kind |
+| `body_bytes()` | `u64` | Total decoded body bytes observed for the message |
+
+**HttpExchangeCloseEvent** — passed to `on_http_exchange_close`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata |
+| `reason()` | `HttpCloseReason` | Terminal close reason |
+| `flags()` | `HttpExchangeFlags` | Completion flags for request and response |
+
+### Mutable Helpers
+
+**HttpHeadersMut** — returned by `headers_mut()`:
+
+| Method | Description |
+|--------|-------------|
+| `iter()` | Iterate the current header view |
+| `count()` / `is_empty()` | Inspect the current header block |
+| `get()` / `get_str()` | Look up the first matching header |
+| `add()` / `add_str()` | Append a header without removing existing values |
+| `set()` / `set_str()` | Replace all values for one header name |
+| `remove()` / `remove_str()` | Remove all matching headers |
+
+**HttpRequestHead** — returned by `head_mut()` on requests:
+
+| Method | Description |
+|--------|-------------|
+| `raw_target_str()` | Read the raw request-target |
+| `method_str()` / `set_method_str()` | Read or replace the request method |
+| `scheme_str()` / `set_scheme_str()` | Read or replace the scheme |
+| `authority_str()` / `set_authority_str()` | Read or replace the authority |
+| `path_str()` / `set_path_str()` | Read or replace the normalized path |
+| `headers()` / `headers_mut()` | Inspect or rewrite the host-backed header block |
+
+**HttpResponseHead** — returned by `head_mut()` on responses:
+
+| Method | Description |
+|--------|-------------|
+| `status_code()` / `set_status_code()` | Read or replace the status code |
+| `reason_str()` / `set_reason_str()` | Read or replace the reason phrase |
+| `headers()` / `headers_mut()` | Inspect or rewrite the host-backed header block |
+
+### Inline Rewrite Example
+
+```rust
+use qcontrol::prelude::*;
+
+fn on_http_request(ev: &mut HttpRequestEvent) -> HttpRequestAction {
+    if let Some(mut headers) = ev.headers_mut() {
+        headers.remove_str("proxy-connection");
+        headers.set_str("x-qcontrol", "1");
+    }
+
+    HttpRequestAction::Pass
+}
+
+fn on_http_response(_state: PluginState, ev: &mut HttpResponseEvent) -> HttpAction {
+    if let Some(mut headers) = ev.headers_mut() {
+        headers.set_str("content-type", "text/plain; charset=utf-8");
+    }
+
+    HttpAction::Pass.with_body_mode(HttpBodyMode::Buffer)
+}
+
+fn on_http_response_body(_state: PluginState, ev: &mut HttpBodyEvent) -> HttpAction {
+    if ev.end_of_stream() {
+        if let Some(mut body) = ev.body_mut() {
+            body.set_str("rewritten by qcontrol\n");
+        }
+    }
+
+    HttpAction::Pass
+}
+```
+
 ## Building Plugins
 
 ### Project Setup
@@ -702,6 +890,16 @@ export_plugin!(
         .on_net_send(on_net_send)
         .on_net_recv(on_net_recv)
         .on_net_close(on_net_close)
+        // HTTP callbacks (optional)
+        .on_http_request(on_http_request)
+        .on_http_request_body(on_http_request_body)
+        .on_http_request_trailers(on_http_request_trailers)
+        .on_http_request_done(on_http_request_done)
+        .on_http_response(on_http_response)
+        .on_http_response_body(on_http_response_body)
+        .on_http_response_trailers(on_http_response_trailers)
+        .on_http_response_done(on_http_response_done)
+        .on_http_exchange_close(on_http_exchange_close)
 );
 ```
 

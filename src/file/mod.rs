@@ -18,7 +18,7 @@ pub use pattern::FilePattern;
 pub use session::{
     FileContext, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn, SessionState,
 };
-pub use state::FileState;
+pub use state::{FileState, PluginState};
 
 // Re-export Buffer from parent module for convenience
 pub use crate::buffer::Buffer;
@@ -31,14 +31,14 @@ pub type FileOpenFn = fn(&FileOpenEvent) -> FileOpenResult;
 /// Callback type for file read events.
 ///
 /// Receives the session state and read event, returns an action.
-pub type FileReadFn = fn(FileState, &FileReadEvent) -> FileAction;
+pub type FileReadFn = fn(PluginState, &FileReadEvent) -> FileAction;
 
 /// Callback type for file write events.
 ///
 /// Receives the session state and write event, returns an action.
-pub type FileWriteFn = fn(FileState, &FileWriteEvent) -> FileAction;
+pub type FileWriteFn = fn(PluginState, &FileWriteEvent) -> FileAction;
 
 /// Callback type for file close events.
 ///
 /// Receives the session state and close event. Called for cleanup.
-pub type FileCloseFn = fn(FileState, &FileCloseEvent);
+pub type FileCloseFn = fn(PluginState, &FileCloseEvent);

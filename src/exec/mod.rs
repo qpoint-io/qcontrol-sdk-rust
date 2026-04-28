@@ -18,8 +18,8 @@ pub use event::{ExecEvent, ExitEvent, StderrEvent, StdinEvent, StdoutEvent};
 pub use pattern::ExecPattern;
 pub use session::{ExecRwConfig, ExecSession, ExecSessionBuilder, ExecTransformFn, SessionState};
 
-// Re-export FileState for convenience (used in callbacks)
-pub use crate::file::FileState;
+// Re-export plugin state for convenience (used in callbacks)
+pub use crate::state::{FileState, PluginState};
 
 // Re-export Buffer from parent module for convenience
 pub use crate::buffer::Buffer;
@@ -32,19 +32,19 @@ pub type ExecFn = fn(&ExecEvent) -> ExecResult;
 /// Callback type for stdin events.
 ///
 /// Receives the session state and stdin event, returns an action.
-pub type ExecStdinFn = fn(FileState, &StdinEvent) -> ExecAction;
+pub type ExecStdinFn = fn(PluginState, &StdinEvent) -> ExecAction;
 
 /// Callback type for stdout events.
 ///
 /// Receives the session state and stdout event, returns an action.
-pub type ExecStdoutFn = fn(FileState, &StdoutEvent) -> ExecAction;
+pub type ExecStdoutFn = fn(PluginState, &StdoutEvent) -> ExecAction;
 
 /// Callback type for stderr events.
 ///
 /// Receives the session state and stderr event, returns an action.
-pub type ExecStderrFn = fn(FileState, &StderrEvent) -> ExecAction;
+pub type ExecStderrFn = fn(PluginState, &StderrEvent) -> ExecAction;
 
 /// Callback type for exit events.
 ///
 /// Receives the session state and exit event. Called for cleanup.
-pub type ExecExitFn = fn(FileState, &ExitEvent);
+pub type ExecExitFn = fn(PluginState, &ExitEvent);
