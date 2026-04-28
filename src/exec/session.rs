@@ -9,13 +9,13 @@ use std::ffi::{c_char, c_void, CString};
 use crate::buffer::Buffer;
 use crate::exec::{ExecAction, ExecContext, ExecPattern};
 use crate::ffi;
-use crate::file::FileState;
+use crate::state::PluginState;
 
 /// Transform function type for custom transforms.
 ///
 /// Called during stdin/stdout/stderr operations to modify the buffer.
 /// Receives the file state, context, and mutable buffer.
-pub type ExecTransformFn = fn(FileState, &ExecContext, &mut Buffer) -> ExecAction;
+pub type ExecTransformFn = fn(PluginState, &ExecContext, &mut Buffer) -> ExecAction;
 
 /// Internal wrapper around user state that includes transform function pointers.
 ///
@@ -46,11 +46,11 @@ pub struct SessionState {
 }
 
 impl SessionState {
-    /// Get a FileState referencing the user's state.
-    pub fn as_file_state(&self) -> FileState<'_> {
+    /// Get a PluginState referencing the user's state.
+    pub fn as_file_state(&self) -> PluginState<'_> {
         match &self.user_state {
-            Some(boxed) => FileState::from_ref(boxed.as_ref()),
-            None => FileState::empty(),
+            Some(boxed) => PluginState::from_ref(boxed.as_ref()),
+            None => PluginState::empty(),
         }
     }
 }

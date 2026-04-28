@@ -99,15 +99,19 @@ pub use bindings::qcontrol_http_action_t;
 pub use bindings::qcontrol_http_action_type_t;
 pub use bindings::qcontrol_http_body_event_t;
 pub use bindings::qcontrol_http_body_flag_t;
+pub use bindings::qcontrol_http_body_mode_t;
 pub use bindings::qcontrol_http_close_reason_t;
 pub use bindings::qcontrol_http_ctx_t;
 pub use bindings::qcontrol_http_exchange_close_event_t;
 pub use bindings::qcontrol_http_exchange_flag_t;
 pub use bindings::qcontrol_http_header_t;
+pub use bindings::qcontrol_http_headers_t;
 pub use bindings::qcontrol_http_message_done_event_t;
 pub use bindings::qcontrol_http_message_kind_t;
 pub use bindings::qcontrol_http_request_event_t;
+pub use bindings::qcontrol_http_request_head_t;
 pub use bindings::qcontrol_http_response_event_t;
+pub use bindings::qcontrol_http_response_head_t;
 pub use bindings::qcontrol_http_trailers_event_t;
 pub use bindings::qcontrol_http_version_t;
 
@@ -130,6 +134,11 @@ pub use bindings::qcontrol_http_message_kind_t_QCONTROL_HTTP_MESSAGE_RESPONSE;
 pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_CONTENT_DECODED;
 pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_NONE;
 pub use bindings::qcontrol_http_body_flag_t_QCONTROL_HTTP_BODY_FLAG_TRANSFER_DECODED;
+
+// HTTP body mode constants
+pub use bindings::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_BUFFER;
+pub use bindings::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT;
+pub use bindings::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_STREAM;
 
 // HTTP close reason constants
 pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_ABORTED;
@@ -161,3 +170,31 @@ pub use bindings::qcontrol_buffer_replace;
 pub use bindings::qcontrol_buffer_replace_all;
 pub use bindings::qcontrol_buffer_set;
 pub use bindings::qcontrol_buffer_starts_with;
+
+// HTTP helper functions (implemented by the host/runtime)
+pub use bindings::qcontrol_http_headers_add;
+pub use bindings::qcontrol_http_headers_count;
+pub use bindings::qcontrol_http_headers_data;
+pub use bindings::qcontrol_http_headers_remove;
+pub use bindings::qcontrol_http_headers_set;
+pub use bindings::qcontrol_http_request_authority;
+pub use bindings::qcontrol_http_request_authority_len;
+pub use bindings::qcontrol_http_request_headers;
+pub use bindings::qcontrol_http_request_method;
+pub use bindings::qcontrol_http_request_method_len;
+pub use bindings::qcontrol_http_request_path;
+pub use bindings::qcontrol_http_request_path_len;
+pub use bindings::qcontrol_http_request_raw_target;
+pub use bindings::qcontrol_http_request_raw_target_len;
+pub use bindings::qcontrol_http_request_scheme;
+pub use bindings::qcontrol_http_request_scheme_len;
+pub use bindings::qcontrol_http_request_set_authority;
+pub use bindings::qcontrol_http_request_set_method;
+pub use bindings::qcontrol_http_request_set_path;
+pub use bindings::qcontrol_http_request_set_scheme;
+pub use bindings::qcontrol_http_response_headers;
+pub use bindings::qcontrol_http_response_reason;
+pub use bindings::qcontrol_http_response_reason_len;
+pub use bindings::qcontrol_http_response_set_reason;
+pub use bindings::qcontrol_http_response_set_status_code;
+pub use bindings::qcontrol_http_response_status_code;

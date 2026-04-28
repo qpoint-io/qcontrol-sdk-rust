@@ -38,7 +38,7 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
     ExecResult::Pass
 }
 
-fn on_exec_stdin(_state: FileState, ev: &StdinEvent) -> ExecAction {
+fn on_exec_stdin(_state: PluginState, ev: &StdinEvent) -> ExecAction {
     LOGGER.log(&format!(
         "[exec_logger.rs] stdin(pid={}, count={})",
         ev.pid(),
@@ -47,7 +47,7 @@ fn on_exec_stdin(_state: FileState, ev: &StdinEvent) -> ExecAction {
     ExecAction::Pass
 }
 
-fn on_exec_stdout(_state: FileState, ev: &StdoutEvent) -> ExecAction {
+fn on_exec_stdout(_state: PluginState, ev: &StdoutEvent) -> ExecAction {
     LOGGER.log(&format!(
         "[exec_logger.rs] stdout(pid={}, count={}) = {}",
         ev.pid(),
@@ -57,7 +57,7 @@ fn on_exec_stdout(_state: FileState, ev: &StdoutEvent) -> ExecAction {
     ExecAction::Pass
 }
 
-fn on_exec_stderr(_state: FileState, ev: &StderrEvent) -> ExecAction {
+fn on_exec_stderr(_state: PluginState, ev: &StderrEvent) -> ExecAction {
     LOGGER.log(&format!(
         "[exec_logger.rs] stderr(pid={}, count={}) = {}",
         ev.pid(),
@@ -67,7 +67,7 @@ fn on_exec_stderr(_state: FileState, ev: &StderrEvent) -> ExecAction {
     ExecAction::Pass
 }
 
-fn on_exec_exit(_state: FileState, ev: &ExitEvent) {
+fn on_exec_exit(_state: PluginState, ev: &ExitEvent) {
     if ev.exited_normally() {
         LOGGER.log(&format!(
             "[exec_logger.rs] exit(pid={}, code={})",

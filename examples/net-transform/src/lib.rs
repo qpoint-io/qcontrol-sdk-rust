@@ -46,7 +46,7 @@ fn on_net_connect(ev: &ConnectEvent) -> ConnectResult {
     )
 }
 
-fn on_net_domain(_state: FileState, ev: &DomainEvent) {
+fn on_net_domain(_state: PluginState, ev: &DomainEvent) {
     LOGGER.log(&format!(
         "[net_transform.rs] domain(fd={}, domain={})",
         ev.fd(),
@@ -54,7 +54,7 @@ fn on_net_domain(_state: FileState, ev: &DomainEvent) {
     ));
 }
 
-fn on_net_close(_state: FileState, ev: &NetCloseEvent) {
+fn on_net_close(_state: PluginState, ev: &NetCloseEvent) {
     LOGGER.log(&format!(
         "[net_transform.rs] close(fd={}) = {}",
         ev.fd(),

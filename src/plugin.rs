@@ -600,7 +600,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_file_read() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::file::SessionState);
@@ -627,7 +627,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_file_write() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::file::SessionState);
@@ -655,7 +655,7 @@ macro_rules! export_plugin {
 
             if let Some(f) = builder.get_on_file_close() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::file::SessionState);
@@ -703,7 +703,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_exec_stdin() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::exec::SessionState);
@@ -730,7 +730,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_exec_stdout() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::exec::SessionState);
@@ -757,7 +757,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_exec_stderr() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::exec::SessionState);
@@ -785,7 +785,7 @@ macro_rules! export_plugin {
 
             if let Some(f) = builder.get_on_exec_exit() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::exec::SessionState);
@@ -851,7 +851,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_tls() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -870,7 +870,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_domain() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -889,7 +889,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_protocol() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -908,7 +908,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_send() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -935,7 +935,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_recv() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -963,7 +963,7 @@ macro_rules! export_plugin {
 
             if let Some(f) = builder.get_on_net_close() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let session_state = &*(state as *const $crate::net::SessionState);
@@ -991,12 +991,14 @@ macro_rules! export_plugin {
         ) -> $crate::ffi::qcontrol_http_action_t {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_request() {
-                let ev = unsafe { $crate::http::HttpRequestEvent::from_raw(event) };
-                let result = f(&ev);
+                let mut ev = unsafe { $crate::http::HttpRequestEvent::from_raw(event) };
+                let result = f(&mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1011,19 +1013,21 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_request_body() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
                         http_state.as_file_state()
                     }
                 };
-                let ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
-                let result = f(file_state, &ev);
+                let mut ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
+                let result = f(file_state, &mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1038,19 +1042,21 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_request_trailers() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
                         http_state.as_file_state()
                     }
                 };
-                let ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
-                let result = f(file_state, &ev);
+                let mut ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
+                let result = f(file_state, &mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1065,7 +1071,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_request_done() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
@@ -1084,19 +1090,21 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_response() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
                         http_state.as_file_state()
                     }
                 };
-                let ev = unsafe { $crate::http::HttpResponseEvent::from_raw(event) };
-                let result = f(file_state, &ev);
+                let mut ev = unsafe { $crate::http::HttpResponseEvent::from_raw(event) };
+                let result = f(file_state, &mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1111,19 +1119,21 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_response_body() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
                         http_state.as_file_state()
                     }
                 };
-                let ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
-                let result = f(file_state, &ev);
+                let mut ev = unsafe { $crate::http::HttpBodyEvent::from_raw(event) };
+                let result = f(file_state, &mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1138,19 +1148,21 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_response_trailers() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
                         http_state.as_file_state()
                     }
                 };
-                let ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
-                let result = f(file_state, &ev);
+                let mut ev = unsafe { $crate::http::HttpTrailersEvent::from_raw(event) };
+                let result = f(file_state, &mut ev);
                 result.to_ffi()
             } else {
                 $crate::ffi::qcontrol_http_action_t {
                     type_: $crate::ffi::qcontrol_http_action_type_t_QCONTROL_HTTP_ACTION_PASS,
+                    body_mode:
+                        $crate::ffi::qcontrol_http_body_mode_t_QCONTROL_HTTP_BODY_MODE_DEFAULT,
                     __bindgen_anon_1: $crate::ffi::qcontrol_http_action__bindgen_ty_1 {
                         state: std::ptr::null_mut(),
                     },
@@ -1165,7 +1177,7 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_http_response_done() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);
@@ -1185,7 +1197,7 @@ macro_rules! export_plugin {
 
             if let Some(f) = builder.get_on_http_exchange_close() {
                 let file_state = if state.is_null() {
-                    $crate::file::FileState::empty()
+                    $crate::PluginState::empty()
                 } else {
                     unsafe {
                         let http_state = &*(state as *const $crate::http::HttpState);

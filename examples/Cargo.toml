@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["file-logger", "access-control", "byte-counter", "content-filter", "text-transform", "exec-logger", "net-logger", "net-transform", "http-logger"]
+members = ["file-logger", "access-control", "byte-counter", "content-filter", "text-transform", "exec-logger", "net-logger", "net-transform", "http-logger", "http-rewrite"]
 
 [workspace.dependencies]
 qcontrol = { path = ".." }
+serde_json = "1"

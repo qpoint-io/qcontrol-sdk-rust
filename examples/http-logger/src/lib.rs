@@ -9,7 +9,7 @@ use qcontrol::prelude::*;
 
 /// Per-exchange state tracked from request through close.
 ///
-/// Uses `Cell` for fields mutated by later callbacks since `FileState`
+/// Uses `Cell` for fields mutated by later callbacks since `PluginState`
 /// only provides shared references.
 struct ExchangeState {
     exchange_id: u64,
@@ -20,7 +20,7 @@ struct ExchangeState {
     response_body_bytes: Cell<u64>,
 }
 
-fn on_http_request(ev: &HttpRequestEvent) -> HttpRequestAction {
+fn on_http_request(ev: &mut HttpRequestEvent) -> HttpRequestAction {
     let ctx = ev.ctx();
     let exchange_id = ctx.exchange_id();
     let method = String::from_utf8_lossy(ev.method()).into_owned();
@@ -49,7 +49,7 @@ fn on_http_request(ev: &HttpRequestEvent) -> HttpRequestAction {
     HttpRequestAction::State(Box::new(state))
 }
 
-fn on_http_request_body(state: FileState, ev: &HttpBodyEvent) -> HttpAction {
+fn on_http_request_body(state: PluginState, ev: &mut HttpBodyEvent) -> HttpAction {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         s.request_body_bytes
             .set(s.request_body_bytes.get() + ev.bytes().len() as u64);
@@ -63,7 +63,7 @@ fn on_http_request_body(state: FileState, ev: &HttpBodyEvent) -> HttpAction {
     HttpAction::Pass
 }
 
-fn on_http_request_trailers(state: FileState, ev: &HttpTrailersEvent) -> HttpAction {
+fn on_http_request_trailers(state: PluginState, ev: &mut HttpTrailersEvent) -> HttpAction {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         eprintln!(
             "[http_logger.rs] request_trailers exchange={} count={}",
@@ -74,7 +74,7 @@ fn on_http_request_trailers(state: FileState, ev: &HttpTrailersEvent) -> HttpAct
     HttpAction::Pass
 }
 
-fn on_http_request_done(state: FileState, ev: &HttpMessageDoneEvent) {
+fn on_http_request_done(state: PluginState, ev: &HttpMessageDoneEvent) {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         eprintln!(
             "[http_logger.rs] request_done exchange={} body_bytes={}",
@@ -84,7 +84,7 @@ fn on_http_request_done(state: FileState, ev: &HttpMessageDoneEvent) {
     }
 }
 
-fn on_http_response(state: FileState, ev: &HttpResponseEvent) -> HttpAction {
+fn on_http_response(state: PluginState, ev: &mut HttpResponseEvent) -> HttpAction {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         s.status_code.set(ev.status_code());
         eprintln!(
@@ -103,7 +103,7 @@ fn on_http_response(state: FileState, ev: &HttpResponseEvent) -> HttpAction {
     HttpAction::Pass
 }
 
-fn on_http_response_body(state: FileState, ev: &HttpBodyEvent) -> HttpAction {
+fn on_http_response_body(state: PluginState, ev: &mut HttpBodyEvent) -> HttpAction {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         s.response_body_bytes
             .set(s.response_body_bytes.get() + ev.bytes().len() as u64);
@@ -117,7 +117,7 @@ fn on_http_response_body(state: FileState, ev: &HttpBodyEvent) -> HttpAction {
     HttpAction::Pass
 }
 
-fn on_http_response_trailers(state: FileState, ev: &HttpTrailersEvent) -> HttpAction {
+fn on_http_response_trailers(state: PluginState, ev: &mut HttpTrailersEvent) -> HttpAction {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         eprintln!(
             "[http_logger.rs] response_trailers exchange={} count={}",
@@ -128,7 +128,7 @@ fn on_http_response_trailers(state: FileState, ev: &HttpTrailersEvent) -> HttpAc
     HttpAction::Pass
 }
 
-fn on_http_response_done(state: FileState, ev: &HttpMessageDoneEvent) {
+fn on_http_response_done(state: PluginState, ev: &HttpMessageDoneEvent) {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         eprintln!(
             "[http_logger.rs] response_done exchange={} body_bytes={}",
@@ -138,7 +138,7 @@ fn on_http_response_done(state: FileState, ev: &HttpMessageDoneEvent) {
     }
 }
 
-fn on_http_exchange_close(state: FileState, ev: &HttpExchangeCloseEvent) {
+fn on_http_exchange_close(state: PluginState, ev: &HttpExchangeCloseEvent) {
     if let Some(s) = state.downcast_ref::<ExchangeState>() {
         eprintln!(
             "[http_logger.rs] close exchange={} status={} request_bytes={} response_bytes={} reason={:?}",

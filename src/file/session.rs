@@ -9,13 +9,14 @@ use std::path::Path;
 
 use crate::buffer::Buffer;
 use crate::ffi;
-use crate::file::{FileAction, FilePattern, FileState};
+use crate::file::{FileAction, FilePattern};
+use crate::state::PluginState;
 
 /// Transform function type for custom transforms.
 ///
 /// Called during read/write operations to modify the buffer.
 /// Receives the file state, context, and mutable buffer.
-pub type FileTransformFn = fn(FileState, &FileContext, &mut Buffer) -> FileAction;
+pub type FileTransformFn = fn(PluginState, &FileContext, &mut Buffer) -> FileAction;
 
 /// Internal wrapper around user state that includes transform function pointers.
 ///
@@ -35,11 +36,11 @@ pub struct SessionState {
 }
 
 impl SessionState {
-    /// Get a FileState referencing the user's state.
-    pub fn as_file_state(&self) -> FileState<'_> {
+    /// Get a PluginState referencing the user's state.
+    pub fn as_file_state(&self) -> PluginState<'_> {
         match &self.user_state {
-            Some(boxed) => FileState::from_ref(boxed.as_ref()),
-            None => FileState::empty(),
+            Some(boxed) => PluginState::from_ref(boxed.as_ref()),
+            None => PluginState::empty(),
         }
     }
 }

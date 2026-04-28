@@ -52,7 +52,7 @@ fn on_net_accept(ev: &AcceptEvent) -> AcceptResult {
     AcceptResult::Session(NetSession::builder().state(TrackedState).build())
 }
 
-fn on_net_tls(_state: FileState, ev: &TlsEvent) {
+fn on_net_tls(_state: PluginState, ev: &TlsEvent) {
     LOGGER.log(&format!(
         "[net_logger.rs] tls(fd={}, version={})",
         ev.fd(),
@@ -63,7 +63,7 @@ fn on_net_tls(_state: FileState, ev: &TlsEvent) {
     }
 }
 
-fn on_net_domain(_state: FileState, ev: &DomainEvent) {
+fn on_net_domain(_state: PluginState, ev: &DomainEvent) {
     LOGGER.log(&format!(
         "[net_logger.rs] domain(fd={}, domain={})",
         ev.fd(),
@@ -71,7 +71,7 @@ fn on_net_domain(_state: FileState, ev: &DomainEvent) {
     ));
 }
 
-fn on_net_protocol(_state: FileState, ev: &ProtocolEvent) {
+fn on_net_protocol(_state: PluginState, ev: &ProtocolEvent) {
     LOGGER.log(&format!(
         "[net_logger.rs] protocol(fd={}, protocol={})",
         ev.fd(),
@@ -79,7 +79,7 @@ fn on_net_protocol(_state: FileState, ev: &ProtocolEvent) {
     ));
 }
 
-fn on_net_send(_state: FileState, ev: &SendEvent) -> NetAction {
+fn on_net_send(_state: PluginState, ev: &SendEvent) -> NetAction {
     LOGGER.log(&format!(
         "[net_logger.rs] send(fd={}, count={})",
         ev.fd(),
@@ -88,7 +88,7 @@ fn on_net_send(_state: FileState, ev: &SendEvent) -> NetAction {
     NetAction::Pass
 }
 
-fn on_net_recv(_state: FileState, ev: &RecvEvent) -> NetAction {
+fn on_net_recv(_state: PluginState, ev: &RecvEvent) -> NetAction {
     LOGGER.log(&format!(
         "[net_logger.rs] recv(fd={}, count={}) = {}",
         ev.fd(),
@@ -98,7 +98,7 @@ fn on_net_recv(_state: FileState, ev: &RecvEvent) -> NetAction {
     NetAction::Pass
 }
 
-fn on_net_close(_state: FileState, ev: &NetCloseEvent) {
+fn on_net_close(_state: PluginState, ev: &NetCloseEvent) {
     LOGGER.log(&format!(
         "[net_logger.rs] close(fd={}) = {}",
         ev.fd(),
