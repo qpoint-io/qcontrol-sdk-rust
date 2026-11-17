@@ -157,15 +157,13 @@ fn on_http_exchange_close(state: PluginState, ev: &HttpExchangeCloseEvent) {
     }
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_http_logger")
-        .on_http_request(on_http_request)
-        .on_http_request_body(on_http_request_body)
-        .on_http_request_trailers(on_http_request_trailers)
-        .on_http_request_done(on_http_request_done)
-        .on_http_response(on_http_response)
-        .on_http_response_body(on_http_response_body)
-        .on_http_response_trailers(on_http_response_trailers)
-        .on_http_response_done(on_http_response_done)
-        .on_http_exchange_close(on_http_exchange_close)
-);
+export_plugin!(PluginBuilder::new("rust_http_logger")
+    .on_http_request(on_http_request)
+    .on_http_request_body(on_http_request_body)
+    .on_http_request_trailers(on_http_request_trailers)
+    .on_http_request_done(on_http_request_done)
+    .on_http_response(on_http_response)
+    .on_http_response_body(on_http_response_body)
+    .on_http_response_trailers(on_http_response_trailers)
+    .on_http_response_done(on_http_response_done)
+    .on_http_exchange_close(on_http_exchange_close));

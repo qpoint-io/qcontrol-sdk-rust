@@ -139,6 +139,10 @@ pub struct ExecSession {
     pub(crate) unset_env: Option<Vec<CString>>,
     /// Replace working directory.
     pub(crate) set_cwd: Option<CString>,
+    /// Replace effective user identity when the host supports launch control.
+    pub(crate) set_uid: Option<u32>,
+    /// Replace effective primary group identity when the host supports launch control.
+    pub(crate) set_gid: Option<u32>,
     /// Stdin transform configuration.
     pub(crate) stdin: Option<Box<ExecRwConfig>>,
     /// Stdout transform configuration.
@@ -168,6 +172,8 @@ impl ExecSession {
             set_env,
             unset_env,
             set_cwd,
+            set_uid,
+            set_gid,
             stdin,
             stdout,
             stderr,
@@ -268,6 +274,10 @@ impl ExecSession {
             set_env: set_env_ptr,
             unset_env: unset_env_ptr,
             set_cwd: set_cwd_ptr,
+            set_uid: set_uid.unwrap_or(0) as ffi::uid_t,
+            set_gid: set_gid.unwrap_or(0) as ffi::gid_t,
+            has_set_uid: i32::from(set_uid.is_some()),
+            has_set_gid: i32::from(set_gid.is_some()),
             stdin_config: stdin_ptr,
             stdout_config: stdout_ptr,
             stderr_config: stderr_ptr,
@@ -283,6 +293,8 @@ impl std::fmt::Debug for ExecSession {
             .field("stdin", &self.stdin)
             .field("stdout", &self.stdout)
             .field("stderr", &self.stderr)
+            .field("set_uid", &self.set_uid)
+            .field("set_gid", &self.set_gid)
             .finish()
     }
 }
@@ -298,6 +310,8 @@ pub struct ExecSessionBuilder {
     set_env: Option<Vec<CString>>,
     unset_env: Option<Vec<CString>>,
     set_cwd: Option<CString>,
+    set_uid: Option<u32>,
+    set_gid: Option<u32>,
     stdin: Option<Box<ExecRwConfig>>,
     stdout: Option<Box<ExecRwConfig>>,
     stderr: Option<Box<ExecRwConfig>>,
@@ -363,6 +377,18 @@ impl ExecSessionBuilder {
         self
     }
 
+    /// Replace the effective user identity when the host supports launch control.
+    pub fn set_uid(mut self, uid: u32) -> Self {
+        self.set_uid = Some(uid);
+        self
+    }
+
+    /// Replace the effective primary group identity when the host supports launch control.
+    pub fn set_gid(mut self, gid: u32) -> Self {
+        self.set_gid = Some(gid);
+        self
+    }
+
     /// Set the stdin transform configuration.
     pub fn stdin(mut self, config: ExecRwConfig) -> Self {
         self.stdin = Some(Box::new(config));
@@ -392,6 +418,8 @@ impl ExecSessionBuilder {
             set_env: self.set_env,
             unset_env: self.unset_env,
             set_cwd: self.set_cwd,
+            set_uid: self.set_uid,
+            set_gid: self.set_gid,
             stdin: self.stdin,
             stdout: self.stdout,
             stderr: self.stderr,

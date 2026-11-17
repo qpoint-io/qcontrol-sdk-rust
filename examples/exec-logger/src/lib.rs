@@ -11,7 +11,7 @@ use qcontrol::prelude::*;
 
 static LOGGER: Logger = Logger::new();
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[exec_logger.rs] initializing...");
     Ok(())

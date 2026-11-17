@@ -1,11 +1,139 @@
-//! Buffer wrapper for transform operations
+//! Buffer wrapper for transform operations.
 //!
-//! Thin wrapper around the agent's C buffer functions. These functions
-//! are implemented by the agent and called by plugins during transforms.
+//! This module wraps one host-backed buffer handle whose embedded callback
+//! table exposes the shared mutation surface across file, net, exec, and HTTP
+//! plugins.
 
-use std::ffi::c_char;
+use std::ffi::{c_char, c_void};
 
 use crate::ffi;
+
+/// Returns the callback table attached to one raw buffer handle.
+fn buffer_ops(raw: *const ffi::qcontrol_buffer_t) -> Option<&'static ffi::qcontrol_buffer_ops_t> {
+    unsafe { raw.as_ref()?.ops.as_ref() }
+}
+
+/// Returns the host-owned context pointer attached to one raw buffer handle.
+fn buffer_context(raw: *const ffi::qcontrol_buffer_t) -> *mut c_void {
+    unsafe { raw.as_ref().map_or(std::ptr::null_mut(), |buf| buf.context) }
+}
+
+/// Returns the current length reported by one raw buffer handle.
+fn buffer_len(raw: *const ffi::qcontrol_buffer_t) -> usize {
+    let Some(ops) = buffer_ops(raw) else {
+        return 0;
+    };
+    let Some(len_fn) = ops.len else {
+        return 0;
+    };
+    unsafe { len_fn(buffer_context(raw)) }
+}
+
+/// Returns the current data pointer reported by one raw buffer handle.
+fn buffer_data(raw: *const ffi::qcontrol_buffer_t) -> *const c_char {
+    let Some(ops) = buffer_ops(raw) else {
+        return std::ptr::null();
+    };
+    let Some(data_fn) = ops.data else {
+        return std::ptr::null();
+    };
+    unsafe { data_fn(buffer_context(raw)) }
+}
+
+/// Returns the current byte slice exposed by one raw buffer handle.
+pub(crate) fn buffer_bytes(raw: *const ffi::qcontrol_buffer_t) -> &'static [u8] {
+    let len = buffer_len(raw);
+    if len == 0 {
+        return &[];
+    }
+
+    let ptr = buffer_data(raw);
+    if ptr.is_null() {
+        return &[];
+    }
+
+    unsafe { std::slice::from_raw_parts(ptr as *const u8, len) }
+}
+
+/// Reports whether one raw buffer handle contains the requested bytes.
+fn buffer_contains(raw: *const ffi::qcontrol_buffer_t, needle: &[u8]) -> bool {
+    let Some(ops) = buffer_ops(raw) else {
+        return false;
+    };
+    let Some(contains_fn) = ops.contains else {
+        return false;
+    };
+    unsafe {
+        contains_fn(
+            buffer_context(raw),
+            needle.as_ptr() as *const c_char,
+            needle.len(),
+        ) != 0
+    }
+}
+
+/// Reports whether one raw buffer handle starts with the requested prefix.
+fn buffer_starts_with(raw: *const ffi::qcontrol_buffer_t, prefix: &[u8]) -> bool {
+    let Some(ops) = buffer_ops(raw) else {
+        return false;
+    };
+    let Some(starts_with_fn) = ops.starts_with else {
+        return false;
+    };
+    unsafe {
+        starts_with_fn(
+            buffer_context(raw),
+            prefix.as_ptr() as *const c_char,
+            prefix.len(),
+        ) != 0
+    }
+}
+
+/// Reports whether one raw buffer handle ends with the requested suffix.
+fn buffer_ends_with(raw: *const ffi::qcontrol_buffer_t, suffix: &[u8]) -> bool {
+    let Some(ops) = buffer_ops(raw) else {
+        return false;
+    };
+    let Some(ends_with_fn) = ops.ends_with else {
+        return false;
+    };
+    unsafe {
+        ends_with_fn(
+            buffer_context(raw),
+            suffix.as_ptr() as *const c_char,
+            suffix.len(),
+        ) != 0
+    }
+}
+
+/// Finds the first index of one byte sequence within the raw buffer handle.
+fn buffer_find(raw: *const ffi::qcontrol_buffer_t, needle: &[u8]) -> Option<usize> {
+    let ops = buffer_ops(raw)?;
+    let index_of_fn = ops.index_of?;
+    let index = unsafe {
+        index_of_fn(
+            buffer_context(raw),
+            needle.as_ptr() as *const c_char,
+            needle.len(),
+        )
+    };
+    if index == usize::MAX {
+        None
+    } else {
+        Some(index)
+    }
+}
+
+/// Invokes one void mutation callback on the raw buffer handle when present.
+fn buffer_write(
+    raw: *mut ffi::qcontrol_buffer_t,
+    f: impl FnOnce(&ffi::qcontrol_buffer_ops_t, *mut c_void),
+) {
+    let Some(ops) = buffer_ops(raw) else {
+        return;
+    };
+    f(ops, buffer_context(raw));
+}
 
 /// A read-only view over one host-managed buffer.
 ///
@@ -31,7 +159,7 @@ impl<'a> BufferRef<'a> {
 
     /// Get the current length of the buffer in bytes.
     pub fn len(&self) -> usize {
-        unsafe { ffi::qcontrol_buffer_len(self.inner) }
+        buffer_len(self.inner)
     }
 
     /// Check if the buffer is empty.
@@ -41,15 +169,7 @@ impl<'a> BufferRef<'a> {
 
     /// Get the buffer contents as a byte slice.
     pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            let ptr = ffi::qcontrol_buffer_data(self.inner);
-            let len = ffi::qcontrol_buffer_len(self.inner);
-            if ptr.is_null() || len == 0 {
-                &[]
-            } else {
-                std::slice::from_raw_parts(ptr as *const u8, len)
-            }
-        }
+        buffer_bytes(self.inner)
     }
 
     /// Get the buffer contents as a string slice if valid UTF-8.
@@ -59,13 +179,7 @@ impl<'a> BufferRef<'a> {
 
     /// Check if the buffer contains the given needle.
     pub fn contains(&self, needle: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_contains(
-                self.inner,
-                needle.as_ptr() as *const c_char,
-                needle.len(),
-            ) != 0
-        }
+        buffer_contains(self.inner, needle)
     }
 
     /// Check if the buffer contains the given string.
@@ -75,13 +189,7 @@ impl<'a> BufferRef<'a> {
 
     /// Check if the buffer starts with the given prefix.
     pub fn starts_with(&self, prefix: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_starts_with(
-                self.inner,
-                prefix.as_ptr() as *const c_char,
-                prefix.len(),
-            ) != 0
-        }
+        buffer_starts_with(self.inner, prefix)
     }
 
     /// Check if the buffer starts with the given string.
@@ -91,13 +199,7 @@ impl<'a> BufferRef<'a> {
 
     /// Check if the buffer ends with the given suffix.
     pub fn ends_with(&self, suffix: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_ends_with(
-                self.inner,
-                suffix.as_ptr() as *const c_char,
-                suffix.len(),
-            ) != 0
-        }
+        buffer_ends_with(self.inner, suffix)
     }
 
     /// Check if the buffer ends with the given string.
@@ -107,18 +209,7 @@ impl<'a> BufferRef<'a> {
 
     /// Find the index of the first occurrence of one byte sequence.
     pub fn find(&self, needle: &[u8]) -> Option<usize> {
-        let index = unsafe {
-            ffi::qcontrol_buffer_index_of(
-                self.inner,
-                needle.as_ptr() as *const c_char,
-                needle.len(),
-            )
-        };
-        if index == usize::MAX {
-            None
-        } else {
-            Some(index)
-        }
+        buffer_find(self.inner, needle)
     }
 
     /// Find the index of the first occurrence of one UTF-8 string.
@@ -129,29 +220,25 @@ impl<'a> BufferRef<'a> {
 
 /// A mutable buffer for transform operations.
 ///
-/// This type wraps the agent's buffer implementation and provides
-/// methods for reading and modifying buffer contents during transforms.
+/// This type wraps one host-managed buffer handle and exposes the repository's
+/// shared query and mutation helpers through that handle's callback table.
 pub struct Buffer<'a> {
     inner: &'a mut ffi::qcontrol_buffer_t,
 }
 
 impl<'a> Buffer<'a> {
-    /// Create a new Buffer wrapper from raw FFI pointer.
+    /// Create a new buffer wrapper from one raw FFI pointer.
     ///
     /// # Safety
-    /// The pointer must be valid for the lifetime 'a.
+    /// The pointer must be valid for the lifetime `'a`.
     #[doc(hidden)]
     pub unsafe fn from_raw(ptr: *mut ffi::qcontrol_buffer_t) -> Self {
         Self { inner: &mut *ptr }
     }
 
-    // ========================================================================
-    // Read operations
-    // ========================================================================
-
     /// Get the current length of the buffer in bytes.
     pub fn len(&self) -> usize {
-        unsafe { ffi::qcontrol_buffer_len(self.inner) }
+        buffer_len(self.inner)
     }
 
     /// Check if the buffer is empty.
@@ -161,15 +248,7 @@ impl<'a> Buffer<'a> {
 
     /// Get the buffer contents as a byte slice.
     pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            let ptr = ffi::qcontrol_buffer_data(self.inner);
-            let len = ffi::qcontrol_buffer_len(self.inner);
-            if ptr.is_null() || len == 0 {
-                &[]
-            } else {
-                std::slice::from_raw_parts(ptr as *const u8, len)
-            }
-        }
+        buffer_bytes(self.inner)
     }
 
     /// Get the buffer contents as a string slice if valid UTF-8.
@@ -179,13 +258,7 @@ impl<'a> Buffer<'a> {
 
     /// Check if the buffer contains the given needle.
     pub fn contains(&self, needle: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_contains(
-                self.inner,
-                needle.as_ptr() as *const c_char,
-                needle.len(),
-            ) != 0
-        }
+        buffer_contains(self.inner, needle)
     }
 
     /// Check if the buffer contains the given string.
@@ -195,13 +268,7 @@ impl<'a> Buffer<'a> {
 
     /// Check if the buffer starts with the given prefix.
     pub fn starts_with(&self, prefix: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_starts_with(
-                self.inner,
-                prefix.as_ptr() as *const c_char,
-                prefix.len(),
-            ) != 0
-        }
+        buffer_starts_with(self.inner, prefix)
     }
 
     /// Check if the buffer starts with the given string.
@@ -211,13 +278,7 @@ impl<'a> Buffer<'a> {
 
     /// Check if the buffer ends with the given suffix.
     pub fn ends_with(&self, suffix: &[u8]) -> bool {
-        unsafe {
-            ffi::qcontrol_buffer_ends_with(
-                self.inner,
-                suffix.as_ptr() as *const c_char,
-                suffix.len(),
-            ) != 0
-        }
+        buffer_ends_with(self.inner, suffix)
     }
 
     /// Check if the buffer ends with the given string.
@@ -228,18 +289,7 @@ impl<'a> Buffer<'a> {
     /// Find the index of the first occurrence of needle.
     /// Returns `None` if not found.
     pub fn find(&self, needle: &[u8]) -> Option<usize> {
-        let index = unsafe {
-            ffi::qcontrol_buffer_index_of(
-                self.inner,
-                needle.as_ptr() as *const c_char,
-                needle.len(),
-            )
-        };
-        if index == usize::MAX {
-            None
-        } else {
-            Some(index)
-        }
+        buffer_find(self.inner, needle)
     }
 
     /// Find the index of the first occurrence of the string.
@@ -248,15 +298,13 @@ impl<'a> Buffer<'a> {
         self.find(needle.as_bytes())
     }
 
-    // ========================================================================
-    // Write operations
-    // ========================================================================
-
     /// Prepend data to the beginning of the buffer.
     pub fn prepend(&mut self, data: &[u8]) {
-        unsafe {
-            ffi::qcontrol_buffer_prepend(self.inner, data.as_ptr() as *const c_char, data.len());
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(prepend_fn) = ops.prepend {
+                unsafe { prepend_fn(ctx, data.as_ptr() as *const c_char, data.len()) };
+            }
+        });
     }
 
     /// Prepend a string to the beginning of the buffer.
@@ -266,9 +314,11 @@ impl<'a> Buffer<'a> {
 
     /// Append data to the end of the buffer.
     pub fn append(&mut self, data: &[u8]) {
-        unsafe {
-            ffi::qcontrol_buffer_append(self.inner, data.as_ptr() as *const c_char, data.len());
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(append_fn) = ops.append {
+                unsafe { append_fn(ctx, data.as_ptr() as *const c_char, data.len()) };
+            }
+        });
     }
 
     /// Append a string to the end of the buffer.
@@ -279,9 +329,15 @@ impl<'a> Buffer<'a> {
     /// Replace the first occurrence of needle with replacement.
     /// Returns `true` if a replacement was made.
     pub fn replace(&mut self, needle: &[u8], replacement: &[u8]) -> bool {
+        let Some(ops) = buffer_ops(self.inner) else {
+            return false;
+        };
+        let Some(replace_fn) = ops.replace else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_buffer_replace(
-                self.inner,
+            replace_fn(
+                buffer_context(self.inner),
                 needle.as_ptr() as *const c_char,
                 needle.len(),
                 replacement.as_ptr() as *const c_char,
@@ -299,9 +355,15 @@ impl<'a> Buffer<'a> {
     /// Replace all occurrences of needle with replacement.
     /// Returns the number of replacements made.
     pub fn replace_all(&mut self, needle: &[u8], replacement: &[u8]) -> usize {
+        let Some(ops) = buffer_ops(self.inner) else {
+            return 0;
+        };
+        let Some(replace_all_fn) = ops.replace_all else {
+            return 0;
+        };
         unsafe {
-            ffi::qcontrol_buffer_replace_all(
-                self.inner,
+            replace_all_fn(
+                buffer_context(self.inner),
                 needle.as_ptr() as *const c_char,
                 needle.len(),
                 replacement.as_ptr() as *const c_char,
@@ -319,9 +381,18 @@ impl<'a> Buffer<'a> {
     /// Remove the first occurrence of needle.
     /// Returns `true` if a removal was made.
     pub fn remove(&mut self, needle: &[u8]) -> bool {
+        let Some(ops) = buffer_ops(self.inner) else {
+            return false;
+        };
+        let Some(remove_fn) = ops.remove else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_buffer_remove(self.inner, needle.as_ptr() as *const c_char, needle.len())
-                != 0
+            remove_fn(
+                buffer_context(self.inner),
+                needle.as_ptr() as *const c_char,
+                needle.len(),
+            ) != 0
         }
     }
 
@@ -334,9 +405,15 @@ impl<'a> Buffer<'a> {
     /// Remove all occurrences of needle.
     /// Returns the number of removals made.
     pub fn remove_all(&mut self, needle: &[u8]) -> usize {
+        let Some(ops) = buffer_ops(self.inner) else {
+            return 0;
+        };
+        let Some(remove_all_fn) = ops.remove_all else {
+            return 0;
+        };
         unsafe {
-            ffi::qcontrol_buffer_remove_all(
-                self.inner,
+            remove_all_fn(
+                buffer_context(self.inner),
                 needle.as_ptr() as *const c_char,
                 needle.len(),
             )
@@ -351,16 +428,20 @@ impl<'a> Buffer<'a> {
 
     /// Clear the buffer contents.
     pub fn clear(&mut self) {
-        unsafe {
-            ffi::qcontrol_buffer_clear(self.inner);
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(clear_fn) = ops.clear {
+                unsafe { clear_fn(ctx) };
+            }
+        });
     }
 
     /// Set the buffer contents to new data.
     pub fn set(&mut self, data: &[u8]) {
-        unsafe {
-            ffi::qcontrol_buffer_set(self.inner, data.as_ptr() as *const c_char, data.len());
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(set_fn) = ops.set {
+                unsafe { set_fn(ctx, data.as_ptr() as *const c_char, data.len()) };
+            }
+        });
     }
 
     /// Set the buffer contents to a string.
@@ -370,14 +451,11 @@ impl<'a> Buffer<'a> {
 
     /// Insert data at the given position.
     pub fn insert_at(&mut self, pos: usize, data: &[u8]) {
-        unsafe {
-            ffi::qcontrol_buffer_insert_at(
-                self.inner,
-                pos,
-                data.as_ptr() as *const c_char,
-                data.len(),
-            );
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(insert_at_fn) = ops.insert_at {
+                unsafe { insert_at_fn(ctx, pos, data.as_ptr() as *const c_char, data.len()) };
+            }
+        });
     }
 
     /// Insert a string at the given position.
@@ -387,8 +465,10 @@ impl<'a> Buffer<'a> {
 
     /// Remove a range of bytes from the buffer.
     pub fn remove_range(&mut self, start: usize, end: usize) {
-        unsafe {
-            ffi::qcontrol_buffer_remove_range(self.inner, start, end);
-        }
+        buffer_write(self.inner, |ops, ctx| {
+            if let Some(remove_range_fn) = ops.remove_range {
+                unsafe { remove_range_fn(ctx, start, end) };
+            }
+        });
     }
 }

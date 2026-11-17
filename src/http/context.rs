@@ -92,6 +92,8 @@ pub enum HttpCloseReason {
     ParseError,
     /// Underlying connection closed before exchange completion.
     ConnectionClosed,
+    /// Exchange completed by switching protocols into a derived stream.
+    Upgraded,
 }
 
 impl HttpCloseReason {
@@ -105,6 +107,9 @@ impl HttpCloseReason {
             }
             ffi::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_CONNECTION_CLOSED => {
                 HttpCloseReason::ConnectionClosed
+            }
+            ffi::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_UPGRADED => {
+                HttpCloseReason::Upgraded
             }
             _ => HttpCloseReason::Complete,
         }

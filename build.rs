@@ -16,10 +16,27 @@ fn main() {
     };
 
     // Tell cargo to re-run if the C headers change
+    println!("cargo:rerun-if-changed={}/qcontrol/buffer.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/common.h", c_sdk_include);
+    println!("cargo:rerun-if-changed={}/qcontrol/exec.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/file.h", c_sdk_include);
     println!("cargo:rerun-if-changed={}/qcontrol/http.h", c_sdk_include);
+    println!("cargo:rerun-if-changed={}/qcontrol/net.h", c_sdk_include);
+    println!(
+        "cargo:rerun-if-changed={}/qcontrol/netstat.h",
+        c_sdk_include
+    );
     println!("cargo:rerun-if-changed={}/qcontrol/plugin.h", c_sdk_include);
+    println!(
+        "cargo:rerun-if-changed={}/qcontrol/process.h",
+        c_sdk_include
+    );
+    println!("cargo:rerun-if-changed={}/qcontrol/sse.h", c_sdk_include);
+    println!("cargo:rerun-if-changed={}/qcontrol/stream.h", c_sdk_include);
+    println!(
+        "cargo:rerun-if-changed={}/qcontrol/websocket.h",
+        c_sdk_include
+    );
     println!("cargo:rerun-if-changed=build.rs");
 
     // Generate bindings
@@ -29,8 +46,6 @@ fn main() {
         // Only generate bindings for qcontrol types
         .allowlist_type("qcontrol_.*")
         .allowlist_var("QCONTROL_.*")
-        .allowlist_function("qcontrol_buffer_.*")
-        .allowlist_function("qcontrol_http_.*")
         // Use core types for no_std compatibility
         .use_core()
         // Generate rustified enums

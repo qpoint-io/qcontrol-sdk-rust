@@ -27,7 +27,9 @@
 //! `qcontrol_plugin` symbol containing all callbacks:
 //!
 //! ## Lifecycle
-//! - **on_init** - Called after plugin load (optional)
+//! - **on_init** - Called once with the initial effective config JSON before
+//!   the plugin is published (optional)
+//! - **on_config** - Called only for config updates after initialization
 //! - **on_cleanup** - Called before plugin unload (optional)
 //!
 //! ## File Operations
@@ -52,6 +54,9 @@
 //! - **on_net_send** - Called before data is sent
 //! - **on_net_recv** - Called after data is received
 //! - **on_net_close** - Called when connection is closed
+//!
+//! ## Netstat
+//! - **on_netstat** - Called with one measurement snapshot of socket traffic
 //!
 //! # Sessions and State
 //!
@@ -98,21 +103,38 @@ pub mod file;
 pub mod http;
 mod logger;
 pub mod net;
+pub mod netstat;
 mod plugin;
+pub mod process;
+pub mod sse;
 mod state;
+pub mod stream;
+pub mod websocket;
 
 // Re-export public API
 pub use buffer::{Buffer, BufferRef};
 pub use error::Error;
 pub use logger::Logger;
-pub use plugin::{PluginBuilder, SyncPluginDescriptor};
+#[doc(hidden)]
+pub use plugin::run_config_callback;
+pub use plugin::{
+    parse_config, BoxError, ConfigCallback, InvalidConfig, PluginBuilder, SyncPluginDescriptor,
+};
+pub use process::{ProcessIdentity, ProcessLineageEntry};
+pub use sse::{SseCloseEvent, SseCloseFn, SseEventFn, SseEventRecord, SseOpenEvent, SseOpenFn};
 pub use state::{FileState, PluginState};
+pub use stream::{StreamAction, StreamContext, StreamDirection, StreamProtocol};
+pub use websocket::{
+    WebSocketCloseEvent, WebSocketCloseFn, WebSocketMessageEvent, WebSocketMessageFn,
+    WebSocketMessageKind, WebSocketOpenEvent, WebSocketOpenFn,
+};
 
 // Re-export file module types at top level for convenience
 pub use file::{
-    FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpenEvent, FileOpenFn,
-    FileOpenResult, FilePattern, FileReadEvent, FileReadFn, FileRwConfig, FileSession,
-    FileSessionBuilder, FileTransformFn, FileWriteEvent, FileWriteFn,
+    FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpAction, FileOpEvent, FileOpFn,
+    FileOpKind, FileOpenEvent, FileOpenFn, FileOpenResult, FilePattern, FilePolicyClass,
+    FileReadEvent, FileReadFn, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn,
+    FileWriteEvent, FileWriteFn,
 };
 
 // Re-export exec module types at top level for convenience
@@ -122,12 +144,16 @@ pub use exec::{
     ExitEvent, StderrEvent, StdinEvent, StdoutEvent,
 };
 
+// Re-export netstat snapshot types at top level for convenience
+pub use netstat::{NetstatConnection, NetstatFn, NetstatProtocol, NetstatSnapshot, NetstatTraffic};
+
 // Re-export net module types at top level for convenience
 pub use net::{
     AcceptEvent, AcceptFn, AcceptResult, CloseEvent as NetCloseEvent, CloseFn as NetCloseFn,
     ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
-    NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
-    ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+    NetDirection, NetInspectionMode, NetPattern, NetPhaseAction, NetRwConfig, NetSession,
+    NetSessionBuilder, NetTransformFn, ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent,
+    SendFn, TlsEvent, TlsFn,
 };
 
 // Re-export http module types at top level for convenience
@@ -152,12 +178,14 @@ pub mod prelude {
     pub use crate::logger::Logger;
     pub use crate::patterns;
     pub use crate::PluginBuilder;
+    pub use crate::{parse_config, BoxError, ConfigCallback, InvalidConfig};
 
     // File types
     pub use crate::file::{
-        FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpenEvent, FileOpenFn,
-        FileOpenResult, FilePattern, FileReadEvent, FileReadFn, FileRwConfig, FileSession,
-        FileSessionBuilder, FileTransformFn, FileWriteEvent, FileWriteFn,
+        FileAction, FileCloseEvent, FileCloseFn, FileContext, FileOpAction, FileOpEvent, FileOpFn,
+        FileOpKind, FileOpenEvent, FileOpenFn, FileOpenResult, FilePattern, FilePolicyClass,
+        FileReadEvent, FileReadFn, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn,
+        FileWriteEvent, FileWriteFn,
     };
     pub use crate::{FileState, PluginState};
 
@@ -172,8 +200,15 @@ pub mod prelude {
     pub use crate::net::{
         AcceptEvent, AcceptFn, AcceptResult, CloseEvent as NetCloseEvent, CloseFn as NetCloseFn,
         ConnectEvent, ConnectFn, ConnectResult, DomainEvent, DomainFn, NetAction, NetContext,
-        NetDirection, NetPattern, NetRwConfig, NetSession, NetSessionBuilder, NetTransformFn,
-        ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent, SendFn, TlsEvent, TlsFn,
+        NetDirection, NetInspectionMode, NetPattern, NetPhaseAction, NetRwConfig, NetSession,
+        NetSessionBuilder, NetTransformFn, ProtocolEvent, ProtocolFn, RecvEvent, RecvFn, SendEvent,
+        SendFn, TlsEvent, TlsFn,
+    };
+    pub use crate::process::{ProcessIdentity, ProcessLineageEntry};
+
+    // Netstat snapshot callback
+    pub use crate::netstat::{
+        NetstatConnection, NetstatFn, NetstatProtocol, NetstatSnapshot, NetstatTraffic,
     };
 
     // HTTP types
@@ -185,5 +220,15 @@ pub mod prelude {
         HttpRequestFn, HttpRequestHead, HttpRequestTrailersFn, HttpResponseBodyFn,
         HttpResponseDoneFn, HttpResponseEvent, HttpResponseFn, HttpResponseHead,
         HttpResponseTrailersFn, HttpTrailersEvent, HttpVersion,
+    };
+
+    // Shared stream + SSE/WebSocket types
+    pub use crate::sse::{
+        SseCloseEvent, SseCloseFn, SseEventFn, SseEventRecord, SseOpenEvent, SseOpenFn,
+    };
+    pub use crate::stream::{StreamAction, StreamContext, StreamDirection, StreamProtocol};
+    pub use crate::websocket::{
+        WebSocketCloseEvent, WebSocketCloseFn, WebSocketMessageEvent, WebSocketMessageFn,
+        WebSocketMessageKind, WebSocketOpenEvent, WebSocketOpenFn,
     };
 }

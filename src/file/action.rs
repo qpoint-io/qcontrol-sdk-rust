@@ -83,3 +83,38 @@ impl FileAction {
         }
     }
 }
+
+/// Result returned from `on_file_op` callback.
+///
+/// These callbacks classify path-oriented filesystem operations that do not
+/// participate in the file stream session model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileOpAction {
+    /// Allow the operation.
+    Pass,
+    /// Block the operation with EACCES.
+    Block,
+    /// Block the operation with a specific errno.
+    BlockErrno(i32),
+}
+
+impl FileOpAction {
+    /// Convert to FFI action type.
+    #[doc(hidden)]
+    pub fn to_ffi(self) -> ffi::qcontrol_file_op_action_t {
+        match self {
+            FileOpAction::Pass => ffi::qcontrol_file_op_action_t {
+                type_: ffi::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_PASS,
+                __bindgen_anon_1: ffi::qcontrol_file_op_action__bindgen_ty_1 { errno_val: 0 },
+            },
+            FileOpAction::Block => ffi::qcontrol_file_op_action_t {
+                type_: ffi::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_BLOCK,
+                __bindgen_anon_1: ffi::qcontrol_file_op_action__bindgen_ty_1 { errno_val: 0 },
+            },
+            FileOpAction::BlockErrno(errno) => ffi::qcontrol_file_op_action_t {
+                type_: ffi::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_BLOCK_ERRNO,
+                __bindgen_anon_1: ffi::qcontrol_file_op_action__bindgen_ty_1 { errno_val: errno },
+            },
+        }
+    }
+}

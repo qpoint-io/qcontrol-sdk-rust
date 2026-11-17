@@ -6,9 +6,9 @@ Intercept. Observe. Transform. Build secure sandboxes for AI agents and control 
 
 **Overview:** [Introduction](#introduction) · [What Can You Build?](#what-can-you-build) · [Quick Start](#quick-start) · [Core Concepts](#core-concepts) · [Examples](#examples)
 
-**API Reference:** [File Operations](#file-operations) · [Exec Operations](#exec-operations) · [Network Operations](#network-operations) · [HTTP Operations](#http-operations)
+**API Reference:** [File Operations](#file-operations) · [Exec Operations](#exec-operations) · [Network Operations](#network-operations) · [HTTP Operations](#http-operations) · [SSE Operations](#sse-operations) · [WebSocket Operations](#websocket-operations) · [Configuration](#configuration)
 
-**Development:** [Building Plugins](#building-plugins) · [Bundling Plugins](#bundling-plugins) · [Environment Variables](#environment-variables)
+**Development:** [Building Plugins](#building-plugins) · [Running Plugins](#running-plugins) · [Environment Variables](#environment-variables)
 
 ---
 
@@ -22,8 +22,9 @@ This makes Qcontrol ideal for building **AI agent sandboxes and runtimes**. As a
 - **Intercept exec operations** — Monitor process spawning, modify arguments, capture stdin/stdout/stderr.
 - **Intercept network operations** — Watch connections form, inspect send/recv traffic, detect TLS and protocols.
 - **Intercept HTTP operations** — Observe and rewrite request/response heads, headers, bodies, and trailers through one exchange-based ABI.
+- **Intercept stream protocols above HTTP** — Observe and mutate parsed SSE events and logical WebSocket messages after qcontrol correlates them back to their owning HTTP exchange.
 
-Your plugins run inside the target process via native function hooking. Observe silently, block operations, or transform data in transit. No application changes required.
+Your plugins load in qcontrol host processes (qproxy, qmcp). Observe silently, block operations, or transform data on host-backed event paths.
 
 The SDK handles all FFI internally. You write safe, idiomatic Rust.
 
@@ -32,6 +33,7 @@ The SDK handles all FFI internally. You write safe, idiomatic Rust.
 | Category | What You Can Do | Example Plugin |
 |----------|-----------------|----------------|
 | **HTTP Policy & Rewrites** | Normalize headers, rewrite bodies inline, and attach per-exchange state | [http-rewrite](examples/http-rewrite/) |
+| **Streaming APIs** | Observe SSE streams, rewrite SSE events, and mutate logical WebSocket messages | Raw SDK surface in `qcontrol::sse` and `qcontrol::websocket` |
 | **AI Agent Sandboxes** | Constrain file access, limit network destinations, audit all agent actions | [access-control](examples/access-control/) |
 | **Agent Runtimes** | Build secure execution environments with fine-grained syscall control | [file-logger](examples/file-logger/) |
 | **Security** | Enforce allowlists, block sensitive paths, create application sandboxes | [access-control](examples/access-control/) |
@@ -57,14 +59,14 @@ export_plugin!(
 );
 ```
 
-Bundle and run:
+Build and run:
 
 ```bash
-qcontrol bundle --plugins . -o hello-plugin-bundle.so
-qcontrol wrap --bundle ./hello-plugin-bundle.so -- cat /etc/passwd
+cargo build --release
+qcontrol run --plugins ./target/release/libhello_plugin.so -- cat /etc/passwd
 ```
 
-That's it. Your plugin now intercepts every file open in the wrapped process.
+That's it. Your plugin now intercepts every file open in the instrumented process.
 
 ## Core Concepts
 
@@ -74,10 +76,10 @@ Qcontrol intercepts operations across four domains:
 
 | Domain | Operations | Status |
 |--------|------------|--------|
-| **File** | open, read, write, close | Fully implemented |
-| **Exec** | spawn, stdin, stdout, stderr, exit | SDK ready, agent coming soon |
-| **Network** | connect, accept, send, recv, close | SDK ready, agent coming soon |
-| **HTTP** | request/response heads, bodies, trailers, done, exchange close | SDK ready, proxy-backed wrap mode available today |
+| **File** | open, read, write, close | Implemented in the native run/tap host |
+| **Exec** | spawn, stdin, stdout, stderr, exit | Implemented by the explicit exec host |
+| **Network** | connect, accept, send, recv, close | Implemented by the proxy-backed run path |
+| **HTTP** | request/response heads, bodies, trailers, done, exchange close | Implemented by the proxy-backed run path |
 
 ### Actions
 
@@ -187,6 +189,7 @@ File operations are fully implemented. Use these to observe, block, or transform
 | `on_file_read` | `fn(FileState, &FileReadEvent) -> FileAction` | After read() | Observe or block |
 | `on_file_write` | `fn(FileState, &FileWriteEvent) -> FileAction` | Before write() | Observe or block |
 | `on_file_close` | `fn(FileState, &FileCloseEvent)` | After close() | Cleanup state |
+| `on_file_op` | `fn(&FileOpEvent) -> FileOpAction` | Path operations outside the fd stream lifecycle | Allow or deny metadata / mutation operations |
 
 The `FileState` parameter provides access to your custom state returned from `on_file_open`.
 
@@ -198,6 +201,7 @@ The `FileState` parameter provides access to your custom state returned from `on
 |--------|-------------|-------------|
 | `path()` | `&str` | File path being opened |
 | `path_bytes()` | `&[u8]` | File path as raw bytes |
+| `path_as_path()` | `&Path` | File path as a `std::path::Path` |
 | `flags()` | `i32` | Open flags (O_RDONLY, O_WRONLY, etc.) |
 | `mode()` | `u32` | File mode (for O_CREAT) |
 | `result()` | `i32` | Result fd on success, negative errno on failure |
@@ -232,6 +236,20 @@ The `FileState` parameter provides access to your custom state returned from `on
 | `result()` | `i32` | Result (0 or negative errno) |
 | `succeeded()` | `bool` | Whether close succeeded |
 
+**FileOpEvent** — passed to `on_file_op`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `kind()` | `FileOpKind` | Filesystem operation kind such as `FileOpKind::Stat` or `FileOpKind::Rename` |
+| `policy_class()` | `FilePolicyClass` | Coarse OpenShell-style read/write bucket |
+| `path()` | `&str` | Primary path argument |
+| `secondary_path()` | `Option<&str>` | Secondary path for two-path operations like rename/link/symlink |
+| `dirfd()` | `i32` | Primary-path `dirfd` context for `*at`-style operations |
+| `secondary_dirfd()` | `i32` | Secondary-path `dirfd` context for two-path `*at`-style operations |
+| `at_flags()` | `i32` | `AT_*` flags or `0` |
+| `result()` | `i32` | Result (0 or negative errno) |
+| `succeeded()` | `bool` | Whether the operation succeeded |
+
 ### Actions
 
 **FileOpenResult** — return from `on_file_open`:
@@ -250,6 +268,14 @@ The `FileState` parameter provides access to your custom state returned from `on
 | `FileAction::Pass` | Continue normally |
 | `FileAction::Block` | Block with EACCES |
 | `FileAction::BlockErrno(i32)` | Block with custom errno |
+
+**FileOpAction** — return from `on_file_op`:
+
+| Variant | Description |
+|---------|-------------|
+| `FileOpAction::Pass` | Allow the path operation |
+| `FileOpAction::Block` | Block with EACCES |
+| `FileOpAction::BlockErrno(i32)` | Block with custom errno |
 
 ### Sessions and Transforms
 
@@ -387,7 +413,7 @@ let my_patterns = vec![
 
 ## Exec Operations
 
-> **Note:** Agent support coming soon. The SDK is stable, so you can write plugins now.
+> **Note:** The explicit exec host exercises this ABI today. Agent-side transparent exec hooks are separate from the SDK surface.
 
 ### Callbacks
 
@@ -477,6 +503,8 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
             .set_env(&[("SAFE_MODE", "1")])
             .unset_env(&["DEBUG"])
             .set_cwd("/tmp/sandbox")
+            .set_uid(1001)
+            .set_gid(1001)
 
             // I/O transforms
             .stdin(ExecRwConfig::new().replace("secret", "***"))
@@ -489,7 +517,7 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 
 ## Network Operations
 
-> **Note:** Proxy-backed wrap mode already exercises this ABI today. Native agent-side network hooks are still coming.
+> **Note:** Proxy-backed `qcontrol run` already exercises this ABI today. Native agent-side network hooks are separate from the SDK surface.
 
 ### Callbacks
 
@@ -497,12 +525,12 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 |----------|-----------|-------|---------|
 | `on_net_connect` | `fn(&ConnectEvent) -> ConnectResult` | After connect() | Decide interception |
 | `on_net_accept` | `fn(&AcceptEvent) -> AcceptResult` | After accept() | Decide interception |
-| `on_net_tls` | `fn(PluginState, &TlsEvent)` | After TLS handshake | Observe |
-| `on_net_domain` | `fn(PluginState, &DomainEvent)` | Domain discovered | Observe |
-| `on_net_protocol` | `fn(PluginState, &ProtocolEvent)` | Protocol detected | Observe |
+| `on_net_tls` | `fn(PluginState, &TlsEvent) -> NetPhaseAction` | After TLS handshake | Observe or terminate |
+| `on_net_domain` | `fn(PluginState, &DomainEvent) -> NetPhaseAction` | Domain discovered | Observe or terminate |
+| `on_net_protocol` | `fn(PluginState, &ProtocolEvent) -> NetPhaseAction` | Protocol detected | Observe or terminate |
 | `on_net_send` | `fn(PluginState, &SendEvent) -> NetAction` | Before send | Observe or block |
 | `on_net_recv` | `fn(PluginState, &RecvEvent) -> NetAction` | After recv | Observe or block |
-| `on_net_close` | `fn(PluginState, &NetCloseEvent)` | After close | Cleanup state |
+| `on_net_close` | `fn(PluginState, &CloseEvent)` | After close | Cleanup state |
 
 ### Events
 
@@ -517,6 +545,7 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 | `src_port()` | `u16` | Local source port |
 | `result()` | `i32` | 0 on success, negative errno |
 | `succeeded()` | `bool` | Whether connect succeeded |
+| `process()` | `ProcessIdentity` | Originating process identity and ancestor executable lineage |
 
 **AcceptEvent** — passed to `on_net_accept`:
 
@@ -572,7 +601,7 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 | `count()` | `usize` | Requested byte count |
 | `result()` | `isize` | Bytes received or negative errno |
 
-**NetCloseEvent** — passed to `on_net_close`:
+**CloseEvent** — passed to `on_net_close`:
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
@@ -600,6 +629,14 @@ fn on_exec(ev: &ExecEvent) -> ExecResult {
 | `NetAction::Block` | Block operation |
 | `NetAction::BlockErrno(i32)` | Block with custom errno |
 
+**NetPhaseAction** — return from `on_net_tls`/`on_net_domain`/`on_net_protocol`:
+
+| Variant | Description |
+|---------|-------------|
+| `NetPhaseAction::Pass` | Keep the tracked connection open |
+| `NetPhaseAction::Block` | Terminate the tracked connection |
+| `NetPhaseAction::BlockErrno(i32)` | Terminate with a host-specific errno when supported |
+
 ### Sessions
 
 ```rust
@@ -611,6 +648,7 @@ fn on_net_connect(ev: &ConnectEvent) -> ConnectResult {
             // Connection modifications (connect only)
             .set_addr("proxy.example.com")
             .set_port(8080)
+            .inspection_mode(NetInspectionMode::Intercept)
 
             // I/O transforms
             .send(NetRwConfig::new().replace("secret", "***"))
@@ -634,12 +672,32 @@ The `NetContext` type in transform functions provides connection metadata:
 | `dst_port()` | `u16` | Destination port |
 | `is_tls()` | `bool` | Whether TLS is active |
 | `tls_version()` | `Option<&str>` | TLS version |
+| `tls_cipher()` | `Option<&str>` | TLS cipher suite |
 | `domain()` | `Option<&str>` | Domain name (if discovered) |
 | `protocol()` | `Option<&str>` | Protocol (if detected) |
+| `process()` | `ProcessIdentity` | Originating process identity and ancestor executable lineage |
+
+### Process
+
+The `ProcessIdentity` type is returned from `ConnectEvent::process()` and
+`NetContext::process()`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `pid()` | `i32` | Originating process ID |
+| `exec_path()` | `Option<&str>` | Originating executable path |
+| `lineage()` | `impl Iterator<Item = ProcessLineageEntry>` | Ancestor executable lineage from nearest to farthest |
+
+**ProcessLineageEntry** — yielded from `ProcessIdentity::lineage()`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `pid()` | `i32` | Ancestor process ID |
+| `exec_path()` | `Option<&str>` | Ancestor executable path |
 
 ## HTTP Operations
 
-> **Note:** Proxy-backed wrap mode already exercises this ABI today. HTTP mutation is host-backed, so helpers like `head_mut()`, `headers_mut()`, and `body_mut()` return `None` when the current host/path only supports read-only observation.
+> **Note:** Proxy-backed `qcontrol run` already exercises this ABI today. HTTP mutation is host-backed, so helpers like `head_mut()`, `headers_mut()`, and `body_mut()` return `None` when the current host/path only supports read-only observation.
 
 ### Callbacks
 
@@ -649,7 +707,7 @@ The `NetContext` type in transform functions provides connection metadata:
 | `on_http_request_body` | `fn(PluginState, &mut HttpBodyEvent) -> HttpAction` | Request body | Observe, block, or rewrite body chunks |
 | `on_http_request_trailers` | `fn(PluginState, &mut HttpTrailersEvent) -> HttpAction` | Request trailers | Observe, block, or rewrite trailers |
 | `on_http_request_done` | `fn(PluginState, &HttpMessageDoneEvent)` | Request complete | Bookkeeping after the request finishes |
-| `on_http_response` | `fn(PluginState, &mut HttpResponseEvent) -> HttpAction` | Response head | Observe, block, rewrite headers/status, request body scheduling |
+| `on_http_response` | `fn(PluginState, &mut HttpResponseEvent) -> HttpAction` | Response head | Observe, block, rewrite headers/status, response body scheduling |
 | `on_http_response_body` | `fn(PluginState, &mut HttpBodyEvent) -> HttpAction` | Response body | Observe, block, or rewrite body chunks |
 | `on_http_response_trailers` | `fn(PluginState, &mut HttpTrailersEvent) -> HttpAction` | Response trailers | Observe, block, or rewrite trailers |
 | `on_http_response_done` | `fn(PluginState, &HttpMessageDoneEvent)` | Response complete | Bookkeeping after the response finishes |
@@ -734,6 +792,7 @@ Use `.with_body_mode(...)` on `HttpRequestAction::Pass`, `HttpRequestAction::Sta
 
 | Method | Return Type | Description |
 |--------|-------------|-------------|
+| `ctx()` | `HttpContext` | Exchange metadata |
 | `kind()` | `HttpMessageKind` | `Request` or `Response` |
 | `header_count()` | `usize` | Trailer count |
 | `headers()` | `HttpHeaders` | Iterate trailer headers |
@@ -820,6 +879,173 @@ fn on_http_response_body(_state: PluginState, ev: &mut HttpBodyEvent) -> HttpAct
 }
 ```
 
+## SSE Operations
+
+SSE stays inside one HTTP response. HTTP callbacks still own the response head and trailers, but qcontrol parses `text/event-stream` bodies into complete logical SSE events before your plugin sees them.
+
+For `text/event-stream` responses, `on_http_response_body` still receives decoded body chunks. `on_sse_event` is an additional parsed view of those chunks; plugins that implement both should keep exchange state and choose one semantic parser per exchange.
+
+### Callbacks
+
+| Callback | Signature | Phase | Purpose |
+|----------|-----------|-------|---------|
+| `on_sse_open` | `fn(&SseOpenEvent) -> StreamAction` | After SSE response detection | Start one SSE stream and optionally attach stream-scoped state |
+| `on_sse_event` | `fn(PluginState, &mut SseEventRecord) -> StreamAction` | Once per parsed event | Observe or rewrite one logical SSE event |
+| `on_sse_close` | `fn(PluginState, &SseCloseEvent)` | When the stream ends | Observe terminal close state and clean up |
+
+### Events
+
+All SSE callbacks carry a shared [`StreamContext`](src/stream/context.rs) through `ctx()`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `net()` | `NetContext` | Underlying normalized network context |
+| `connection_id()` | `u64` | Stable identifier for the owning tracked connection |
+| `exchange_id()` | `u64` | Stable identifier for the owning HTTP exchange |
+| `http_version()` | `HttpVersion` | HTTP version that created this SSE stream |
+| `protocol()` | `StreamProtocol` | `Sse` for this callback family |
+
+**SseOpenEvent** — passed to `on_sse_open`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `content_type()` | `&[u8]` | Response content type that identified this stream as SSE |
+
+**SseEventRecord** — passed to `on_sse_event`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `event_name()` / `event_name_str()` | `&[u8]` / `Option<&str>` | Parsed `event:` field |
+| `id()` / `id_str()` | `&[u8]` / `Option<&str>` | Parsed `id:` field |
+| `retry_ms()` | `Option<u64>` | Parsed `retry:` field when present |
+| `data()` / `data_str()` | `&[u8]` / `Option<&str>` | Parsed logical event data |
+| `can_mutate()` | `bool` | Whether host-backed event mutation is available |
+
+**SseCloseEvent** — passed to `on_sse_close`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `reason()` | `HttpCloseReason` | Why the owning SSE response stream closed |
+
+### Actions
+
+| Action | Description |
+|--------|-------------|
+| `StreamAction::Pass` | Continue forwarding the current SSE callback normally |
+| `StreamAction::Block` | Terminate the SSE response stream |
+| `StreamAction::State(Box<dyn Any + Send>)` | Attach or replace one SSE-stream-scoped state value |
+
+### Mutable Helpers
+
+**SseEventRecord** mutation helpers:
+
+| Method | Description |
+|--------|-------------|
+| `set_event_name()` / `set_event_name_str()` | Replace the parsed `event:` field |
+| `clear_event_name()` | Remove the parsed `event:` field |
+| `set_id()` / `set_id_str()` | Replace the parsed `id:` field |
+| `clear_id()` | Remove the parsed `id:` field |
+| `set_retry_ms()` | Replace the parsed `retry:` value |
+| `clear_retry_ms()` | Remove the parsed `retry:` field |
+| `set_data()` / `set_data_str()` | Replace the logical event data |
+| `clear_data()` | Clear the logical event data |
+
+### SSE Rewrite Example
+
+```rust
+use qcontrol::prelude::*;
+
+fn on_sse_event(_state: PluginState, ev: &mut SseEventRecord) -> StreamAction {
+    if ev.event_name_str() == Some("heartbeat") && ev.data_str() == Some("ping") {
+        ev.set_data_str("pong");
+    }
+
+    StreamAction::Pass
+}
+```
+
+## WebSocket Operations
+
+WebSocket is HTTP only through the upgrade handshake. HTTP callbacks still own the request and `101 Switching Protocols` response, and qcontrol delivers logical post-upgrade WebSocket messages after frame parsing, client unmasking, and message reassembly.
+
+### Callbacks
+
+| Callback | Signature | Phase | Purpose |
+|----------|-----------|-------|---------|
+| `on_websocket_open` | `fn(&WebSocketOpenEvent) -> StreamAction` | After a successful upgrade | Start one upgraded stream and optionally attach stream-scoped state |
+| `on_websocket_send` | `fn(PluginState, &mut WebSocketMessageEvent) -> StreamAction` | Once per client-to-server message | Observe or rewrite one logical outgoing message |
+| `on_websocket_recv` | `fn(PluginState, &mut WebSocketMessageEvent) -> StreamAction` | Once per server-to-client message | Observe or rewrite one logical incoming message |
+| `on_websocket_close` | `fn(PluginState, &WebSocketCloseEvent)` | When the upgraded stream ends | Observe terminal close state and clean up |
+
+### Events
+
+All WebSocket callbacks also carry `StreamContext` through `ctx()` with the same `net()`, `connection_id()`, `exchange_id()`, `http_version()`, and `protocol()` accessors described above.
+
+**WebSocketOpenEvent** — passed to `on_websocket_open`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `subprotocol()` | `&[u8]` | Negotiated subprotocol, if present |
+| `extensions()` | `&[u8]` | Negotiated extensions header value |
+
+**WebSocketMessageEvent** — passed to `on_websocket_send` and `on_websocket_recv`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `kind()` | `WebSocketMessageKind` | `Text` or `Binary` |
+| `bytes()` | `&[u8]` | Logical message payload bytes |
+| `text()` / `text_lossy()` | `Option<&str>` / `Option<Cow<'_, str>>` | Text view for text messages |
+| `can_mutate()` | `bool` | Whether host-backed message mutation is available |
+| `body_mut()` | `Option<Buffer>` | Mutable host-backed message buffer |
+
+**WebSocketCloseEvent** — passed to `on_websocket_close`:
+
+| Method | Return Type | Description |
+|--------|-------------|-------------|
+| `ctx()` | `StreamContext` | Shared stream correlation context |
+| `direction()` | `StreamDirection` | First observed close-frame direction, or `Unknown` |
+| `code()` | `u16` | Observed close code, if any |
+| `reason()` | `&[u8]` | Observed close reason bytes |
+| `clean()` | `bool` | Whether the close handshake completed cleanly |
+
+### Actions
+
+| Action | Description |
+|--------|-------------|
+| `StreamAction::Pass` | Continue forwarding the current WebSocket callback normally |
+| `StreamAction::Block` | Terminate the upgraded WebSocket stream |
+| `StreamAction::State(Box<dyn Any + Send>)` | Attach or replace one upgraded-stream-scoped state value |
+
+### Mutable Helpers
+
+**WebSocketMessageEvent** mutation helpers:
+
+| Method | Description |
+|--------|-------------|
+| `set_bytes()` | Replace the logical message payload bytes |
+| `set_text()` | Replace the logical message payload with UTF-8 text |
+
+qcontrol handles client masking and negotiated `permessage-deflate` before plugin callbacks, so plugins work with logical payload bytes rather than raw frames or compressed wire payloads.
+
+### WebSocket Rewrite Example
+
+```rust
+use qcontrol::prelude::*;
+
+fn on_websocket_send(_state: PluginState, ev: &mut WebSocketMessageEvent) -> StreamAction {
+    if ev.kind() == WebSocketMessageKind::Text && ev.text() == Some("hello") {
+        let _ = ev.set_text("goodbye");
+    }
+
+    StreamAction::Pass
+}
+```
+
 ## Building Plugins
 
 ### Project Setup
@@ -842,13 +1068,131 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-# cdylib: shared library for dynamic loading (QCONTROL_PLUGINS)
-# staticlib: static archive for bundling (qcontrol bundle)
-crate-type = ["cdylib", "staticlib"]
+# cdylib: shared library for dynamic loading via --plugins / QCONTROL_PLUGINS
+crate-type = ["cdylib"]
 
 [dependencies]
 qcontrol = { git = "https://github.com/qpoint-io/qcontrol-sdk-rust" }
 ```
+
+### Configuration
+
+Operators configure a plugin through the `config:` value on its behavior entry.
+Plugin-specific settings belong there, not in environment variables, and a
+plugin never sets process environment. Reference secrets by file path; never
+put a secret in config.
+
+#### Delivery
+
+`on_init` receives the initial effective config once, before the plugin is
+published. `on_config` receives later updates only, never the initial config.
+Both take `fn(&str) -> Result<(), BoxError>` (`ConfigCallback`). The host calls
+`on_config` when the configuration a running session started from is edited:
+each plugin gets its complete new effective config, or `null` once its entry is
+removed. Calls for one plugin never overlap, unchanged config is skipped, and
+only the newest pending update is delivered.
+
+The `&str` is UTF-8 JSON borrowed for the call; copy anything you keep. It is
+always `null` (no config) or a JSON object: the host rejects any other shape
+before loading, so a plugin does not check the shape itself. A plugin without
+`on_init` accepts only `null`.
+
+#### Schema
+
+Define a plugin-owned `Config` with `#[serde(default, deny_unknown_fields)]`,
+so omitted fields take the plugin's defaults and a misspelled field is
+rejected instead of ignored. Parse it with
+`parse_config::<Option<Config>>(json)`; `null` selects the defaults. Run checks
+Serde cannot express after parsing.
+
+A plugin that needs `on_init` for setup but takes no settings parses an empty
+`struct Config {}` the same way, so any field is rejected.
+
+Add `serde` with its derive feature to the plugin's `Cargo.toml`.
+
+#### Lifecycle
+
+Use one `resolve` function for both callbacks, and build everything a config
+needs before it takes effect:
+
+1. Parse and validate the complete document.
+2. Open or start anything the new settings require (files, watchers, clients).
+3. Publish the new settings; release what the previous settings held.
+
+A rejected update therefore changes nothing. A failing `on_init` is never
+published and the host does not call `on_cleanup`, so release anything it
+started before returning.
+
+```rust
+use qcontrol::prelude::*;
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct Config {
+    mode: Mode,
+    limit_kb: u64,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Mode {
+    #[default]
+    Summary,
+    Full,
+}
+
+/// Parse and validate a complete document without touching active state.
+fn resolve(json: &str) -> Result<Config, InvalidConfig> {
+    let config = parse_config::<Option<Config>>(json)?.unwrap_or_default();
+    if matches!(config.mode, Mode::Full) && config.limit_kb == 0 {
+        return Err(InvalidConfig("config field limit_kb must be positive in full mode".into()));
+    }
+    Ok(config)
+}
+
+fn init(json: &str) -> Result<(), BoxError> {
+    let _config = resolve(json)?;
+    // Start resources from the config, then publish it.
+    Ok(())
+}
+
+fn configure(json: &str) -> Result<(), BoxError> {
+    let _config = resolve(json)?;
+    // Prepare replacement resources, publish the config, release the old ones.
+    Ok(())
+}
+
+export_plugin!(PluginBuilder::new("configured-plugin")
+    .on_init(init)
+    .on_config(configure));
+```
+
+#### Applying settings
+
+By default each callback uses the settings in effect when it runs, so an
+accepted update applies from the next event. Pin settings to an operation
+instead only when one decision spans several callbacks (for example an HTTP
+request and its response), or when resources built from the settings must
+stay alive until the operation ends.
+
+#### Errors
+
+Return `InvalidConfig(reason)` (boxed with `.into()`) for rejected settings
+(status 1). Any other error is a failure (status 2) with its `to_string()` as
+the reason. Panics, including in error formatting or destruction, are
+contained and reported as failures.
+
+A reason names the field and the problem, never the value: config may hold
+paths or other sensitive text. `parse_config` follows this rule. It names an
+unknown or duplicate field (``unknown field `mood`, expected one of `mode`,
+`limit_kb` ``) and reports every other decoding failure as `invalid config`.
+
+#### Testing
+
+Unit-test updates by calling the exported callbacks directly. Cover accepted
+settings, each rejection, and that a rejected update leaves the previous
+settings in effect. An end-to-end check edits the session's configuration while
+the plugin runs; the host delivers the change through `on_config`.
 
 ### Plugin Structure
 
@@ -857,8 +1201,8 @@ Plugins export a single `qcontrol_plugin` descriptor using the `export_plugin!` 
 ```rust
 use qcontrol::prelude::*;
 
-fn init() -> Result<(), Error> {
-    // Called on load
+fn init(_config: &str) -> Result<(), BoxError> {
+    // Called once on load with the initial config
     Ok(())
 }
 
@@ -868,7 +1212,8 @@ fn cleanup() {
 
 export_plugin!(
     PluginBuilder::new("my-plugin")
-        .on_init(init)                    // Optional: called on load
+        .on_init(init)                    // Optional: initial config on load
+        .on_config(configure)             // Optional: config updates only
         .on_cleanup(cleanup)              // Optional: called on unload
         // File callbacks (optional)
         .on_file_open(on_file_open)
@@ -900,6 +1245,15 @@ export_plugin!(
         .on_http_response_trailers(on_http_response_trailers)
         .on_http_response_done(on_http_response_done)
         .on_http_exchange_close(on_http_exchange_close)
+        // SSE callbacks (optional)
+        .on_sse_open(on_sse_open)
+        .on_sse_event(on_sse_event)
+        .on_sse_close(on_sse_close)
+        // WebSocket callbacks (optional)
+        .on_websocket_open(on_websocket_open)
+        .on_websocket_send(on_websocket_send)
+        .on_websocket_recv(on_websocket_recv)
+        .on_websocket_close(on_websocket_close)
 );
 ```
 
@@ -915,60 +1269,24 @@ cargo build
 cargo build --release
 ```
 
-Output locations:
+Output location:
 - Shared library: `target/release/libmy_plugin.so`
-- Static archive: `target/release/libmy_plugin.a`
 
-### Using Bundles
+## Running Plugins
 
-Bundle plugins directly from plugin directories:
+Run plugins by passing built shared libraries to `qcontrol run --plugins`:
 
 ```bash
-qcontrol bundle --plugins ./my-plugin -o my-plugin-bundle.so
-qcontrol wrap --bundle ./my-plugin-bundle.so -- ./target
+qcontrol run --plugins ./target/release/libmy_plugin.so -- ./target
 
 # Multiple plugins
-qcontrol bundle --plugins ./logger,./blocker -o my-plugins.so
-qcontrol wrap --bundle ./my-plugins.so -- ./target
+qcontrol run --plugins ./logger.so,./blocker.so -- ./target
 ```
 
-## Bundling Plugins
-
-For distribution, bundle plugins with the agent core into a single `.so` file.
-
-### Creating a Bundle
-
-Create the bundle directly from plugin directories:
+The lower-level hosts also honor `QCONTROL_PLUGINS` for comma-separated plugin library paths:
 
 ```bash
-qcontrol bundle --plugins ./file-logger,./access-control -o my-bundle.so
-```
-
-You can also pass prebuilt static archives, or use a `bundle.toml` file when you want to describe larger bundles declaratively:
-
-```toml
-[bundle]
-output = "my-plugins.so"
-
-[[plugins]]
-source = "./file-logger"
-
-[[plugins]]
-source = "./access-control"
-```
-
-```bash
-qcontrol bundle --config bundle.toml
-```
-
-### Using Bundles
-
-```bash
-# Via command line flag
-qcontrol wrap --bundle my-bundle.so -- ./target
-
-# Via environment variable
-QCONTROL_BUNDLE=./my-bundle.so qcontrol wrap -- ./target
+QCONTROL_PLUGINS=./logger.so,./blocker.so qcontrol run -- ./target
 ```
 
 ## API Reference
@@ -976,8 +1294,8 @@ QCONTROL_BUNDLE=./my-bundle.so qcontrol wrap -- ./target
 ### Plugin Lifecycle
 
 ```rust
-fn init() -> Result<(), Error> {
-    // Called after plugin is loaded
+fn init(_config: &str) -> Result<(), BoxError> {
+    // Called once with the initial config before the plugin is published
     // Initialize resources, open log files, etc.
     Ok(())
 }
@@ -997,7 +1315,7 @@ use qcontrol::prelude::*;
 
 static LOGGER: Logger = Logger::new();
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[my-plugin] started");
     Ok(())
@@ -1020,7 +1338,6 @@ The log file path is controlled by `QCONTROL_LOG_FILE` (default: `/tmp/qcontrol.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `QCONTROL_PLUGINS` | (none) | Comma-separated paths to plugin `.so` files |
-| `QCONTROL_BUNDLE` | (none) | Path to bundled plugin `.so` file |
 | `QCONTROL_LOG_FILE` | `/tmp/qcontrol.log` | Log file path for Logger utility |
 
 ## License

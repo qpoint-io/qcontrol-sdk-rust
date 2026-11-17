@@ -87,7 +87,7 @@ fn read_transform(state: FileState, _ctx: &FileContext, buf: &mut Buffer) -> Fil
     FileAction::Pass
 }
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[text_transform.rs] initializing...");
     Ok(())

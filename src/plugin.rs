@@ -3,15 +3,150 @@
 //! Provides a builder pattern for configuring plugins and the `export_plugin!`
 //! macro for generating the required C ABI exports.
 
-use crate::error::Error;
 use crate::exec::{ExecExitFn, ExecFn, ExecStderrFn, ExecStdinFn, ExecStdoutFn};
-use crate::file::{FileCloseFn, FileOpenFn, FileReadFn, FileWriteFn};
+use crate::ffi::qcontrol_string_view_t;
+use crate::file::{FileCloseFn, FileOpFn, FileOpenFn, FileReadFn, FileWriteFn};
 use crate::http::{
     HttpExchangeCloseFn, HttpRequestBodyFn, HttpRequestDoneFn, HttpRequestFn,
     HttpRequestTrailersFn, HttpResponseBodyFn, HttpResponseDoneFn, HttpResponseFn,
     HttpResponseTrailersFn,
 };
 use crate::net::{AcceptFn, CloseFn, ConnectFn, DomainFn, ProtocolFn, RecvFn, SendFn, TlsFn};
+use crate::netstat::NetstatFn;
+use crate::sse::{SseCloseFn, SseEventFn, SseOpenFn};
+use crate::websocket::{WebSocketCloseFn, WebSocketMessageFn, WebSocketOpenFn};
+
+/// Boxed error returned by `on_init` and `on_config` callbacks.
+pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Callback type for `on_init` and `on_config`.
+///
+/// Receives the config as borrowed UTF-8 JSON (the text `null` when absent
+/// at init); the text is valid only during the call, so copy anything
+/// retained.
+pub type ConfigCallback = fn(&str) -> Result<(), BoxError>;
+
+/// Marks a config as invalid (status 1); its message is the reason reported to
+/// the host.
+///
+/// Return it boxed from `on_init` or `on_config`. Any other error maps to a
+/// config-processing failure (status 2) with the error's `to_string()` as the
+/// reason.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidConfig(pub String);
+
+impl std::fmt::Display for InvalidConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for InvalidConfig {}
+
+/// Deserialize plugin-owned settings without exposing rejected values in errors.
+///
+/// Defaults, validation and handling JSON `null` belong to the plugin's chosen
+/// type; this helper preserves Serde's decoding rules and returns owned data.
+/// An unknown or duplicate field is reported by name, since a field name is
+/// never a value; every other failure reports only `invalid config`.
+pub fn parse_config<T: serde::de::DeserializeOwned>(json: &str) -> Result<T, InvalidConfig> {
+    serde_json::from_str(json).map_err(|error| InvalidConfig(field_error(&error.to_string())))
+}
+
+/// Keep Serde's unknown/duplicate field message, which names only fields, and
+/// drop its input position. Any other message may quote a value.
+fn field_error(message: &str) -> String {
+    if message.starts_with("unknown field `") || message.starts_with("duplicate field `") {
+        let end = message.rfind(" at line ").unwrap_or(message.len());
+        return message[..end].to_string();
+    }
+    "invalid config".into()
+}
+
+/// Run a config callback behind the C boundary shared by `on_init` and
+/// `on_config`: decode the borrowed JSON, contain panics, and write bounded
+/// error text into the host buffer.
+///
+/// # Safety
+///
+/// `config` must be null or point to a valid `qcontrol_string_view_t` whose `data`
+/// buffer is readable for `len` bytes for the duration of the call. `error`
+/// may be null; otherwise it must be writable for `error_cap` bytes.
+#[doc(hidden)]
+pub unsafe fn run_config_callback(
+    config: *const qcontrol_string_view_t,
+    error: *mut std::ffi::c_char,
+    error_cap: usize,
+    callback: ConfigCallback,
+    panic_message: &str,
+) -> i32 {
+    let write_error = |message: &str| {
+        if error_cap == 0 || error.is_null() {
+            return;
+        }
+        let message = message.as_bytes();
+        // Reserve one byte for NUL and never touch memory outside the
+        // host-provided capacity.
+        let len = message.len().min(error_cap - 1);
+        // SAFETY: `error` is non-null and `error_cap >= 1` here; `len <= error_cap - 1`
+        // so the copy and the NUL at `error.add(len)` stay within `error_cap` bytes.
+        // `message` is a Rust-owned string, so it cannot overlap the host buffer.
+        unsafe {
+            std::ptr::copy_nonoverlapping(message.as_ptr(), error.cast::<u8>(), len);
+            *error.add(len) = 0;
+        }
+    };
+
+    if config.is_null() {
+        return 2;
+    }
+
+    let config = unsafe { &*config };
+
+    // Borrow exactly the supplied bytes; the host does not provide a terminator.
+    let json_bytes = if config.len == 0 {
+        &[]
+    } else if config.data.is_null() {
+        write_error("invalid config JSON");
+        return 2;
+    } else {
+        unsafe { std::slice::from_raw_parts(config.data.cast::<u8>(), config.len) }
+    };
+    let json = match std::str::from_utf8(json_bytes) {
+        Ok(json) => json,
+        Err(_) => {
+            write_error("invalid config JSON UTF-8");
+            return 2;
+        }
+    };
+
+    // Format and drop the plugin's error inside the boundary too: a plugin
+    // error type whose `Display` or `Drop` panics must not unwind into the
+    // `extern "C"` wrapper and abort the host.
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match callback(json) {
+        Ok(()) => crate::ffi::QCONTROL_CONFIG_OK as i32,
+        Err(err) => match err.downcast_ref::<InvalidConfig>() {
+            Some(invalid) => {
+                write_error(&invalid.0);
+                crate::ffi::QCONTROL_CONFIG_INVALID as i32
+            }
+            None => {
+                write_error(&err.to_string());
+                2
+            }
+        },
+    }));
+    match outcome {
+        Ok(status) => status,
+        Err(payload) => {
+            // Leak the payload: its destructor is plugin code that could panic
+            // again outside this boundary.
+            std::mem::forget(payload);
+            write_error(panic_message);
+            2
+        }
+    }
+}
 
 /// Plugin builder for configuring qcontrol plugins.
 ///
@@ -34,13 +169,14 @@ use crate::net::{AcceptFn, CloseFn, ConnectFn, DomainFn, ProtocolFn, RecvFn, Sen
 /// ```
 pub struct PluginBuilder {
     name: &'static str,
-    on_init: Option<fn() -> Result<(), Error>>,
+    on_init: Option<ConfigCallback>,
     on_cleanup: Option<fn()>,
     // File callbacks
     on_file_open: Option<FileOpenFn>,
     on_file_read: Option<FileReadFn>,
     on_file_write: Option<FileWriteFn>,
     on_file_close: Option<FileCloseFn>,
+    on_file_op: Option<FileOpFn>,
     // Exec callbacks
     on_exec: Option<ExecFn>,
     on_exec_stdin: Option<ExecStdinFn>,
@@ -66,6 +202,19 @@ pub struct PluginBuilder {
     on_http_response_trailers: Option<HttpResponseTrailersFn>,
     on_http_response_done: Option<HttpResponseDoneFn>,
     on_http_exchange_close: Option<HttpExchangeCloseFn>,
+    // SSE callbacks
+    on_sse_open: Option<SseOpenFn>,
+    on_sse_event: Option<SseEventFn>,
+    on_sse_close: Option<SseCloseFn>,
+    // WebSocket callbacks
+    on_websocket_open: Option<WebSocketOpenFn>,
+    on_websocket_send: Option<WebSocketMessageFn>,
+    on_websocket_recv: Option<WebSocketMessageFn>,
+    on_websocket_close: Option<WebSocketCloseFn>,
+    // Netstat callback
+    on_netstat: Option<NetstatFn>,
+    // Configuration updates after successful initialization
+    on_config: Option<ConfigCallback>,
 }
 
 impl PluginBuilder {
@@ -80,6 +229,7 @@ impl PluginBuilder {
             on_file_read: None,
             on_file_write: None,
             on_file_close: None,
+            on_file_op: None,
             // Exec
             on_exec: None,
             on_exec_stdin: None,
@@ -105,13 +255,30 @@ impl PluginBuilder {
             on_http_response_trailers: None,
             on_http_response_done: None,
             on_http_exchange_close: None,
+            // SSE
+            on_sse_open: None,
+            on_sse_event: None,
+            on_sse_close: None,
+            // WebSocket
+            on_websocket_open: None,
+            on_websocket_send: None,
+            on_websocket_recv: None,
+            on_websocket_close: None,
+            on_netstat: None,
+            on_config: None,
         }
     }
 
     /// Set the initialization callback.
     ///
-    /// Called after the plugin is loaded. Return `Err` to abort loading.
-    pub const fn on_init(mut self, f: fn() -> Result<(), Error>) -> Self {
+    /// Called once with the initial effective config JSON before the plugin is
+    /// published. Return `Err` to abort loading ([`InvalidConfig`] rejects the
+    /// config as invalid; any other error is a failure); on failure the host
+    /// does not call cleanup, so unwind any partial setup before returning.
+    /// Plugins that register no `on_init` accept only a null config.
+    /// The borrowed UTF-8 JSON is valid only during this callback; absent
+    /// configuration is the text `null`. Copy anything retained.
+    pub const fn on_init(mut self, f: ConfigCallback) -> Self {
         self.on_init = Some(f);
         self
     }
@@ -153,6 +320,14 @@ impl PluginBuilder {
     /// Called after close() syscall completes.
     pub const fn on_file_close(mut self, f: FileCloseFn) -> Self {
         self.on_file_close = Some(f);
+        self
+    }
+
+    /// Set the generic file path-operation callback.
+    ///
+    /// Called for path-oriented filesystem operations outside the stream lifecycle.
+    pub const fn on_file_op(mut self, f: FileOpFn) -> Self {
+        self.on_file_op = Some(f);
         self
     }
 
@@ -345,6 +520,97 @@ impl PluginBuilder {
     }
 
     // ========================================================================
+    // SSE callbacks
+    // ========================================================================
+
+    /// Set the SSE open callback.
+    ///
+    /// Called once when one HTTP response is identified as `text/event-stream`.
+    pub const fn on_sse_open(mut self, f: SseOpenFn) -> Self {
+        self.on_sse_open = Some(f);
+        self
+    }
+
+    /// Set the SSE event callback.
+    ///
+    /// Called once per parsed logical SSE event record.
+    pub const fn on_sse_event(mut self, f: SseEventFn) -> Self {
+        self.on_sse_event = Some(f);
+        self
+    }
+
+    /// Set the SSE close callback.
+    ///
+    /// Called once when the owning SSE response stream ends.
+    pub const fn on_sse_close(mut self, f: SseCloseFn) -> Self {
+        self.on_sse_close = Some(f);
+        self
+    }
+
+    // ========================================================================
+    // WebSocket callbacks
+    // ========================================================================
+
+    /// Set the WebSocket open callback.
+    ///
+    /// Called once when one HTTP upgrade handshake becomes a WebSocket stream.
+    pub const fn on_websocket_open(mut self, f: WebSocketOpenFn) -> Self {
+        self.on_websocket_open = Some(f);
+        self
+    }
+
+    /// Set the WebSocket send callback.
+    ///
+    /// Called once per logical client-to-server WebSocket message.
+    pub const fn on_websocket_send(mut self, f: WebSocketMessageFn) -> Self {
+        self.on_websocket_send = Some(f);
+        self
+    }
+
+    /// Set the WebSocket receive callback.
+    ///
+    /// Called once per logical server-to-client WebSocket message.
+    pub const fn on_websocket_recv(mut self, f: WebSocketMessageFn) -> Self {
+        self.on_websocket_recv = Some(f);
+        self
+    }
+
+    /// Set the WebSocket close callback.
+    ///
+    /// Called once when the upgraded WebSocket stream ends.
+    pub const fn on_websocket_close(mut self, f: WebSocketCloseFn) -> Self {
+        self.on_websocket_close = Some(f);
+        self
+    }
+
+    /// Set the netstat snapshot callback.
+    ///
+    /// Called with one read-only snapshot. The snapshot is valid only for
+    /// the call.
+    pub const fn on_netstat(mut self, f: NetstatFn) -> Self {
+        self.on_netstat = Some(f);
+        self
+    }
+
+    /// Set the config update callback.
+    ///
+    /// Called only for updates to an already initialized plugin, never for the
+    /// initial config (use `on_init`). Return `Err(InvalidConfig(..).into())` to
+    /// reject the config as invalid; any other error reports a config-processing
+    /// failure, as does a contained panic. Validate before mutating active state
+    /// so a rejected update preserves the previous config. The borrowed UTF-8
+    /// JSON is valid only during this callback; copy anything retained.
+    pub const fn on_config(mut self, f: ConfigCallback) -> Self {
+        self.on_config = Some(f);
+        self
+    }
+
+    /// Get the config update callback.
+    pub const fn get_on_config(&self) -> Option<ConfigCallback> {
+        self.on_config
+    }
+
+    // ========================================================================
     // Getters
     // ========================================================================
 
@@ -354,7 +620,7 @@ impl PluginBuilder {
     }
 
     /// Get the init callback.
-    pub const fn get_on_init(&self) -> Option<fn() -> Result<(), Error>> {
+    pub const fn get_on_init(&self) -> Option<ConfigCallback> {
         self.on_init
     }
 
@@ -381,6 +647,11 @@ impl PluginBuilder {
     /// Get the file close callback.
     pub const fn get_on_file_close(&self) -> Option<FileCloseFn> {
         self.on_file_close
+    }
+
+    /// Get the file path-operation callback.
+    pub const fn get_on_file_op(&self) -> Option<FileOpFn> {
+        self.on_file_op
     }
 
     /// Get the exec callback.
@@ -492,6 +763,46 @@ impl PluginBuilder {
     pub const fn get_on_http_exchange_close(&self) -> Option<HttpExchangeCloseFn> {
         self.on_http_exchange_close
     }
+
+    /// Get the SSE open callback.
+    pub const fn get_on_sse_open(&self) -> Option<SseOpenFn> {
+        self.on_sse_open
+    }
+
+    /// Get the SSE event callback.
+    pub const fn get_on_sse_event(&self) -> Option<SseEventFn> {
+        self.on_sse_event
+    }
+
+    /// Get the SSE close callback.
+    pub const fn get_on_sse_close(&self) -> Option<SseCloseFn> {
+        self.on_sse_close
+    }
+
+    /// Get the WebSocket open callback.
+    pub const fn get_on_websocket_open(&self) -> Option<WebSocketOpenFn> {
+        self.on_websocket_open
+    }
+
+    /// Get the WebSocket send callback.
+    pub const fn get_on_websocket_send(&self) -> Option<WebSocketMessageFn> {
+        self.on_websocket_send
+    }
+
+    /// Get the WebSocket receive callback.
+    pub const fn get_on_websocket_recv(&self) -> Option<WebSocketMessageFn> {
+        self.on_websocket_recv
+    }
+
+    /// Get the WebSocket close callback.
+    pub const fn get_on_websocket_close(&self) -> Option<WebSocketCloseFn> {
+        self.on_websocket_close
+    }
+
+    /// Get the netstat snapshot callback.
+    pub const fn get_on_netstat(&self) -> Option<NetstatFn> {
+        self.on_netstat
+    }
 }
 
 /// Wrapper to make raw plugin descriptor Sync.
@@ -552,15 +863,22 @@ macro_rules! export_plugin {
         // Lifecycle wrappers
         // ====================================================================
 
-        extern "C" fn __qcontrol_init_wrapper() -> i32 {
-            let builder = get_builder();
-            if let Some(f) = builder.get_on_init() {
-                match f() {
-                    Ok(()) => 0,
-                    Err(_) => -1,
-                }
-            } else {
-                0
+        extern "C" fn __qcontrol_init_wrapper(
+            config: *const $crate::ffi::qcontrol_string_view_t,
+            error: *mut std::ffi::c_char,
+            error_cap: usize,
+        ) -> i32 {
+            let Some(callback) = get_builder().get_on_init() else {
+                return 2;
+            };
+            unsafe {
+                $crate::run_config_callback(
+                    config,
+                    error,
+                    error_cap,
+                    callback,
+                    "init callback panicked",
+                )
             }
         }
 
@@ -568,6 +886,29 @@ macro_rules! export_plugin {
             let builder = get_builder();
             if let Some(f) = builder.get_on_cleanup() {
                 f();
+            }
+        }
+
+        // ====================================================================
+        // Config wrapper
+        // ====================================================================
+
+        extern "C" fn __qcontrol_config_wrapper(
+            config: *const $crate::ffi::qcontrol_string_view_t,
+            error: *mut std::ffi::c_char,
+            error_cap: usize,
+        ) -> i32 {
+            let Some(callback) = get_builder().get_on_config() else {
+                return 2;
+            };
+            unsafe {
+                $crate::run_config_callback(
+                    config,
+                    error,
+                    error_cap,
+                    callback,
+                    "config callback panicked",
+                )
             }
         }
 
@@ -670,6 +1011,24 @@ macro_rules! export_plugin {
             if !state.is_null() {
                 unsafe {
                     let _ = Box::from_raw(state as *mut $crate::file::SessionState);
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_file_op_wrapper(
+            event: *mut $crate::ffi::qcontrol_file_op_event_t,
+        ) -> $crate::ffi::qcontrol_file_op_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_file_op() {
+                let ev = unsafe { $crate::file::FileOpEvent::from_raw(event) };
+                let result = f(&ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_file_op_action_t {
+                    type_: $crate::ffi::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_file_op_action__bindgen_ty_1 {
+                        errno_val: 0,
+                    },
                 }
             }
         }
@@ -847,7 +1206,7 @@ macro_rules! export_plugin {
         extern "C" fn __qcontrol_net_tls_wrapper(
             state: *mut std::ffi::c_void,
             event: *mut $crate::ffi::qcontrol_net_tls_event_t,
-        ) {
+        ) -> $crate::ffi::qcontrol_net_phase_action_t {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_tls() {
                 let file_state = if state.is_null() {
@@ -859,14 +1218,22 @@ macro_rules! export_plugin {
                     }
                 };
                 let ev = unsafe { $crate::net::TlsEvent::from_raw(event) };
-                f(file_state, &ev);
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_net_phase_action_t {
+                    type_: $crate::ffi::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_net_phase_action__bindgen_ty_1 {
+                        errno_val: 0,
+                    },
+                }
             }
         }
 
         extern "C" fn __qcontrol_net_domain_wrapper(
             state: *mut std::ffi::c_void,
             event: *mut $crate::ffi::qcontrol_net_domain_event_t,
-        ) {
+        ) -> $crate::ffi::qcontrol_net_phase_action_t {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_domain() {
                 let file_state = if state.is_null() {
@@ -878,14 +1245,22 @@ macro_rules! export_plugin {
                     }
                 };
                 let ev = unsafe { $crate::net::DomainEvent::from_raw(event) };
-                f(file_state, &ev);
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_net_phase_action_t {
+                    type_: $crate::ffi::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_net_phase_action__bindgen_ty_1 {
+                        errno_val: 0,
+                    },
+                }
             }
         }
 
         extern "C" fn __qcontrol_net_protocol_wrapper(
             state: *mut std::ffi::c_void,
             event: *mut $crate::ffi::qcontrol_net_protocol_event_t,
-        ) {
+        ) -> $crate::ffi::qcontrol_net_phase_action_t {
             let builder = get_builder();
             if let Some(f) = builder.get_on_net_protocol() {
                 let file_state = if state.is_null() {
@@ -897,7 +1272,15 @@ macro_rules! export_plugin {
                     }
                 };
                 let ev = unsafe { $crate::net::ProtocolEvent::from_raw(event) };
-                f(file_state, &ev);
+                let result = f(file_state, &ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_net_phase_action_t {
+                    type_: $crate::ffi::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_PASS,
+                    __bindgen_anon_1: $crate::ffi::qcontrol_net_phase_action__bindgen_ty_1 {
+                        errno_val: 0,
+                    },
+                }
             }
         }
 
@@ -1217,6 +1600,187 @@ macro_rules! export_plugin {
         }
 
         // ====================================================================
+        // SSE wrappers
+        // ====================================================================
+
+        extern "C" fn __qcontrol_sse_open_wrapper(
+            event: *mut $crate::ffi::qcontrol_sse_open_event_t,
+        ) -> $crate::ffi::qcontrol_stream_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_sse_open() {
+                let ev = unsafe { $crate::sse::SseOpenEvent::from_raw(event) };
+                let result = f(&ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_stream_action_t {
+                    type_: $crate::ffi::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS,
+                    state: std::ptr::null_mut(),
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_sse_event_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_sse_event_record_t,
+        ) -> $crate::ffi::qcontrol_stream_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_sse_event() {
+                let plugin_state = if state.is_null() {
+                    $crate::PluginState::empty()
+                } else {
+                    unsafe {
+                        let stream_state = &*(state as *const $crate::stream::StreamState);
+                        stream_state.as_plugin_state()
+                    }
+                };
+                let mut ev = unsafe { $crate::sse::SseEventRecord::from_raw(event) };
+                let result = f(plugin_state, &mut ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_stream_action_t {
+                    type_: $crate::ffi::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS,
+                    state: std::ptr::null_mut(),
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_sse_close_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_sse_close_event_t,
+        ) {
+            let builder = get_builder();
+
+            if let Some(f) = builder.get_on_sse_close() {
+                let plugin_state = if state.is_null() {
+                    $crate::PluginState::empty()
+                } else {
+                    unsafe {
+                        let stream_state = &*(state as *const $crate::stream::StreamState);
+                        stream_state.as_plugin_state()
+                    }
+                };
+                let ev = unsafe { $crate::sse::SseCloseEvent::from_raw(event) };
+                f(plugin_state, &ev);
+            }
+
+            if !state.is_null() {
+                unsafe {
+                    let _ = Box::from_raw(state as *mut $crate::stream::StreamState);
+                }
+            }
+        }
+
+        // ====================================================================
+        // WebSocket wrappers
+        // ====================================================================
+
+        extern "C" fn __qcontrol_websocket_open_wrapper(
+            event: *mut $crate::ffi::qcontrol_websocket_open_event_t,
+        ) -> $crate::ffi::qcontrol_stream_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_websocket_open() {
+                let ev = unsafe { $crate::websocket::WebSocketOpenEvent::from_raw(event) };
+                let result = f(&ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_stream_action_t {
+                    type_: $crate::ffi::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS,
+                    state: std::ptr::null_mut(),
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_websocket_send_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_websocket_message_event_t,
+        ) -> $crate::ffi::qcontrol_stream_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_websocket_send() {
+                let plugin_state = if state.is_null() {
+                    $crate::PluginState::empty()
+                } else {
+                    unsafe {
+                        let stream_state = &*(state as *const $crate::stream::StreamState);
+                        stream_state.as_plugin_state()
+                    }
+                };
+                let mut ev = unsafe { $crate::websocket::WebSocketMessageEvent::from_raw(event) };
+                let result = f(plugin_state, &mut ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_stream_action_t {
+                    type_: $crate::ffi::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS,
+                    state: std::ptr::null_mut(),
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_websocket_recv_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_websocket_message_event_t,
+        ) -> $crate::ffi::qcontrol_stream_action_t {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_websocket_recv() {
+                let plugin_state = if state.is_null() {
+                    $crate::PluginState::empty()
+                } else {
+                    unsafe {
+                        let stream_state = &*(state as *const $crate::stream::StreamState);
+                        stream_state.as_plugin_state()
+                    }
+                };
+                let mut ev = unsafe { $crate::websocket::WebSocketMessageEvent::from_raw(event) };
+                let result = f(plugin_state, &mut ev);
+                result.to_ffi()
+            } else {
+                $crate::ffi::qcontrol_stream_action_t {
+                    type_: $crate::ffi::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS,
+                    state: std::ptr::null_mut(),
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_websocket_close_wrapper(
+            state: *mut std::ffi::c_void,
+            event: *mut $crate::ffi::qcontrol_websocket_close_event_t,
+        ) {
+            let builder = get_builder();
+
+            if let Some(f) = builder.get_on_websocket_close() {
+                let plugin_state = if state.is_null() {
+                    $crate::PluginState::empty()
+                } else {
+                    unsafe {
+                        let stream_state = &*(state as *const $crate::stream::StreamState);
+                        stream_state.as_plugin_state()
+                    }
+                };
+                let ev = unsafe { $crate::websocket::WebSocketCloseEvent::from_raw(event) };
+                f(plugin_state, &ev);
+            }
+
+            if !state.is_null() {
+                unsafe {
+                    let _ = Box::from_raw(state as *mut $crate::stream::StreamState);
+                }
+            }
+        }
+
+        extern "C" fn __qcontrol_netstat_wrapper(
+            snapshot: *const $crate::ffi::qcontrol_netstat_snapshot_t,
+        ) {
+            let builder = get_builder();
+            if let Some(f) = builder.get_on_netstat() {
+                if snapshot.is_null() {
+                    return;
+                }
+                // The host keeps the snapshot alive until this wrapper returns.
+                let ev = unsafe { $crate::netstat::NetstatSnapshot::from_raw(snapshot) };
+                f(&ev);
+            }
+        }
+
+        // ====================================================================
         // Static plugin descriptor
         // ====================================================================
 
@@ -1231,8 +1795,13 @@ macro_rules! export_plugin {
             $crate::SyncPluginDescriptor($crate::ffi::qcontrol_plugin_t {
                 version: $crate::ffi::QCONTROL_PLUGIN_VERSION,
                 name: PLUGIN_NAME.as_ptr() as *const std::ffi::c_char,
-                // Lifecycle (always present — init/cleanup are cheap no-ops)
-                on_init: Some(__qcontrol_init_wrapper),
+                // Lifecycle (init only when registered; null accepts only a
+                // null initial config, so configless plugins stay operational)
+                on_init: if __QCONTROL_BUILDER.get_on_init().is_some() {
+                    Some(__qcontrol_init_wrapper)
+                } else {
+                    None
+                },
                 on_cleanup: Some(__qcontrol_cleanup_wrapper),
                 // File
                 on_file_open: if __QCONTROL_BUILDER.get_on_file_open().is_some() {
@@ -1252,6 +1821,11 @@ macro_rules! export_plugin {
                 },
                 on_file_close: if __QCONTROL_BUILDER.get_on_file_close().is_some() {
                     Some(__qcontrol_file_close_wrapper)
+                } else {
+                    None
+                },
+                on_file_op: if __QCONTROL_BUILDER.get_on_file_op().is_some() {
+                    Some(__qcontrol_file_op_wrapper)
                 } else {
                     None
                 },
@@ -1375,6 +1949,277 @@ macro_rules! export_plugin {
                 } else {
                     None
                 },
+                // SSE
+                on_sse_open: if __QCONTROL_BUILDER.get_on_sse_open().is_some() {
+                    Some(__qcontrol_sse_open_wrapper)
+                } else {
+                    None
+                },
+                on_sse_event: if __QCONTROL_BUILDER.get_on_sse_event().is_some() {
+                    Some(__qcontrol_sse_event_wrapper)
+                } else {
+                    None
+                },
+                on_sse_close: if __QCONTROL_BUILDER.get_on_sse_close().is_some() {
+                    Some(__qcontrol_sse_close_wrapper)
+                } else {
+                    None
+                },
+                // WebSocket
+                on_websocket_open: if __QCONTROL_BUILDER.get_on_websocket_open().is_some() {
+                    Some(__qcontrol_websocket_open_wrapper)
+                } else {
+                    None
+                },
+                on_websocket_send: if __QCONTROL_BUILDER.get_on_websocket_send().is_some() {
+                    Some(__qcontrol_websocket_send_wrapper)
+                } else {
+                    None
+                },
+                on_websocket_recv: if __QCONTROL_BUILDER.get_on_websocket_recv().is_some() {
+                    Some(__qcontrol_websocket_recv_wrapper)
+                } else {
+                    None
+                },
+                on_websocket_close: if __QCONTROL_BUILDER.get_on_websocket_close().is_some() {
+                    Some(__qcontrol_websocket_close_wrapper)
+                } else {
+                    None
+                },
+                on_netstat: if __QCONTROL_BUILDER.get_on_netstat().is_some() {
+                    Some(__qcontrol_netstat_wrapper)
+                } else {
+                    None
+                },
+                on_config: if __QCONTROL_BUILDER.get_on_config().is_some() {
+                    Some(__qcontrol_config_wrapper)
+                } else {
+                    None
+                },
             });
     };
+}
+
+#[cfg(test)]
+mod config_tests {
+    //! Exercises the exported init and update C callback boundaries, including
+    //! borrowed data and bounded error-buffer behavior.
+
+    use super::{InvalidConfig, PluginBuilder};
+    use crate::ffi::qcontrol_string_view_t;
+    use crate::BoxError;
+    use std::ffi::c_char;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    static INIT_JSON: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    static UPDATE_JSON: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+    static RECEIVED_POINTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// Ordinary plugin error, distinct from rejected configuration.
+    #[derive(Debug)]
+    struct Internal;
+
+    impl std::fmt::Display for Internal {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("internal failure")
+        }
+    }
+
+    impl std::error::Error for Internal {}
+
+    /// Error whose formatting panics, as plugin-defined error types may.
+    #[derive(Debug)]
+    struct PanicsOnDisplay;
+
+    impl std::fmt::Display for PanicsOnDisplay {
+        fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            panic!("display panic")
+        }
+    }
+
+    impl std::error::Error for PanicsOnDisplay {}
+
+    /// Error whose destructor panics after its message has been formatted.
+    #[derive(Debug)]
+    struct PanicsOnDrop;
+
+    impl std::fmt::Display for PanicsOnDrop {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("drop failure")
+        }
+    }
+
+    impl std::error::Error for PanicsOnDrop {}
+
+    impl Drop for PanicsOnDrop {
+        fn drop(&mut self) {
+            panic!("drop panic")
+        }
+    }
+
+    /// Return representative plugin failures through the real ABI wrappers.
+    fn respond(json: &str) -> Result<(), BoxError> {
+        RECEIVED_POINTER.store(json.as_ptr() as usize, Ordering::Relaxed);
+        match json {
+            "invalid" => Err(InvalidConfig("bad field".into()).into()),
+            "failed" => Err(Internal.into()),
+            "panic" => panic!("sentinel panic"),
+            "payload-drop-panics" => std::panic::panic_any(PanicsOnDrop),
+            "display-panics" => Err(PanicsOnDisplay.into()),
+            "drop-panics" => Err(PanicsOnDrop.into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Record initial input before exercising result translation.
+    fn init(json: &str) -> Result<(), BoxError> {
+        *INIT_JSON.lock().unwrap() = json.as_bytes().to_vec();
+        respond(json)
+    }
+
+    /// Record update input independently from initialization.
+    fn update(json: &str) -> Result<(), BoxError> {
+        *UPDATE_JSON.lock().unwrap() = json.as_bytes().to_vec();
+        respond(json)
+    }
+
+    crate::export_plugin!(PluginBuilder::new("config-tests")
+        .on_init(init)
+        .on_config(update));
+
+    type ConfigFn = unsafe extern "C" fn(*const qcontrol_string_view_t, *mut c_char, usize) -> i32;
+
+    /// Pass a borrowed byte view and caller-sized diagnostic storage to the ABI.
+    fn invoke(callback: ConfigFn, json: &[u8], error: &mut [u8], error_cap: usize) -> i32 {
+        let config = qcontrol_string_view_t {
+            data: json.as_ptr().cast::<c_char>(),
+            len: json.len(),
+        };
+        unsafe { callback(&config, error.as_mut_ptr().cast::<c_char>(), error_cap) }
+    }
+
+    /// Exercise both descriptor callbacks with the same boundary cases.
+    fn callbacks() -> [(&'static str, ConfigFn, &'static Mutex<Vec<u8>>); 2] {
+        [
+            ("init", qcontrol_plugin.0.on_init.unwrap(), &INIT_JSON),
+            ("update", qcontrol_plugin.0.on_config.unwrap(), &UPDATE_JSON),
+        ]
+    }
+
+    /// Protect borrowed input, failure classification and bounded diagnostics.
+    #[test]
+    fn init_and_update_callbacks_map_results_and_bound_error_writes() {
+        for (name, callback, received) in callbacks() {
+            let mut error = [b'X'; 64];
+            let cap = error.len();
+            let json = "{\"snow\":\"☃\"}".as_bytes();
+            // Invalid trailing bytes make scanning beyond the supplied length
+            // observable; the callback must borrow the original allocation.
+            let mut storage = json.to_vec();
+            storage.push(0xff);
+            let input = &storage[..json.len()];
+            assert_eq!(invoke(callback, input, &mut error, cap), 0, "{name}");
+            assert_eq!(received.lock().unwrap().as_slice(), json, "{name}");
+            assert_eq!(
+                RECEIVED_POINTER.load(Ordering::Relaxed),
+                input.as_ptr() as usize,
+                "{name}"
+            );
+
+            assert_eq!(invoke(callback, b"null", &mut error, cap), 0, "{name}");
+            assert_eq!(received.lock().unwrap().as_slice(), b"null", "{name}");
+
+            error.fill(b'X');
+            assert_eq!(invoke(callback, b"invalid", &mut error, cap), 1, "{name}");
+            assert_eq!(&error[..10], b"bad field\0", "{name}");
+
+            error.fill(b'X');
+            assert_eq!(invoke(callback, b"failed", &mut error, cap), 2, "{name}");
+            assert_eq!(&error[..17], b"internal failure\0", "{name}");
+
+            let mut guarded = [b'G'; 7];
+            assert_eq!(
+                invoke(callback, b"invalid", &mut guarded[2..5], 3),
+                1,
+                "{name}"
+            );
+            assert_eq!(guarded, *b"GGba\0GG", "{name}");
+
+            guarded.fill(b'G');
+            assert_eq!(
+                invoke(callback, b"invalid", &mut guarded[2..3], 1),
+                1,
+                "{name}"
+            );
+            assert_eq!(guarded, *b"GG\0GGGG", "{name}");
+
+            let mut zero_capacity = [b'Z'; 4];
+            assert_eq!(
+                invoke(callback, b"invalid", &mut zero_capacity, 0),
+                1,
+                "{name}"
+            );
+            assert_eq!(zero_capacity, *b"ZZZZ", "{name}");
+
+            // A null output pointer suppresses diagnostics at any capacity.
+            for json in [&b"invalid"[..], b"failed", b"panic"] {
+                let config = qcontrol_string_view_t {
+                    data: json.as_ptr().cast(),
+                    len: json.len(),
+                };
+                for capacity in [0, 64] {
+                    let status = unsafe { callback(&config, std::ptr::null_mut(), capacity) };
+                    assert_eq!(status, if json == b"invalid" { 1 } else { 2 }, "{name}");
+                }
+            }
+
+            received.lock().unwrap().clear();
+            assert_eq!(invoke(callback, &[0xff], &mut error, cap), 2, "{name}");
+            assert!(error.contains(&0), "{name}");
+            assert!(received.lock().unwrap().is_empty(), "{name}");
+
+            // Invalid views fail without invoking plugin code; a zero-length
+            // view may have a null data pointer and is passed through as "".
+            let mut view = qcontrol_string_view_t {
+                data: std::ptr::null(),
+                len: 1,
+            };
+            error.fill(b'X');
+            assert_eq!(
+                unsafe { callback(&view, error.as_mut_ptr().cast(), cap) },
+                2,
+                "{name}"
+            );
+            assert!(error.contains(&0), "{name}");
+            assert!(received.lock().unwrap().is_empty(), "{name}");
+            view.len = 0;
+            assert_eq!(
+                unsafe { callback(&view, std::ptr::null_mut(), 0) },
+                0,
+                "{name}"
+            );
+            assert_eq!(
+                unsafe { callback(std::ptr::null(), std::ptr::null_mut(), 0) },
+                2,
+                "{name}"
+            );
+
+            error.fill(b'X');
+            assert_eq!(invoke(callback, b"panic", &mut error, cap), 2, "{name}");
+            assert!(error.contains(&0), "{name}");
+
+            // A plugin error that panics while being formatted or dropped
+            // is contained as a failure instead of aborting the host.
+            for json in [
+                &b"display-panics"[..],
+                b"drop-panics",
+                b"payload-drop-panics",
+            ] {
+                error.fill(b'X');
+                assert_eq!(invoke(callback, json, &mut error, cap), 2, "{name}");
+                assert!(error.contains(&0), "{name}");
+            }
+        }
+    }
 }

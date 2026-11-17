@@ -8,7 +8,7 @@ use std::ffi::{c_char, c_void, CString};
 
 use crate::buffer::Buffer;
 use crate::ffi;
-use crate::net::{NetAction, NetContext, NetPattern};
+use crate::net::{NetAction, NetContext, NetInspectionMode, NetPattern};
 use crate::state::PluginState;
 
 /// Transform function type for custom transforms.
@@ -133,6 +133,8 @@ pub struct NetSession {
     pub(crate) set_addr: Option<CString>,
     /// Replace destination port (0 = no change, connect only).
     pub(crate) set_port: Option<u16>,
+    /// Override tunnel-versus-intercept handling when the host can choose.
+    pub(crate) inspection_mode: Option<NetInspectionMode>,
     /// Send transform configuration.
     pub(crate) send: Option<Box<NetRwConfig>>,
     /// Recv transform configuration.
@@ -185,6 +187,10 @@ impl NetSession {
                 .map(|s| s.as_ptr())
                 .unwrap_or(std::ptr::null()),
             set_port: self.set_port.unwrap_or(0),
+            inspection_mode: self
+                .inspection_mode
+                .unwrap_or(NetInspectionMode::Default)
+                .into(),
             send_config: send_ptr,
             recv_config: recv_ptr,
         }
@@ -197,6 +203,7 @@ impl std::fmt::Debug for NetSession {
             .field("state", &self.state.is_some())
             .field("set_addr", &self.set_addr)
             .field("set_port", &self.set_port)
+            .field("inspection_mode", &self.inspection_mode)
             .field("send", &self.send)
             .field("recv", &self.recv)
             .finish()
@@ -209,6 +216,7 @@ pub struct NetSessionBuilder {
     state: Option<Box<dyn Any + Send>>,
     set_addr: Option<CString>,
     set_port: Option<u16>,
+    inspection_mode: Option<NetInspectionMode>,
     send: Option<Box<NetRwConfig>>,
     recv: Option<Box<NetRwConfig>>,
 }
@@ -239,6 +247,12 @@ impl NetSessionBuilder {
         self
     }
 
+    /// Override tunnel-versus-intercept handling when the host can choose.
+    pub fn inspection_mode(mut self, mode: NetInspectionMode) -> Self {
+        self.inspection_mode = Some(mode);
+        self
+    }
+
     /// Set the send transform configuration.
     pub fn send(mut self, config: NetRwConfig) -> Self {
         self.send = Some(Box::new(config));
@@ -257,6 +271,7 @@ impl NetSessionBuilder {
             state: self.state,
             set_addr: self.set_addr,
             set_port: self.set_port,
+            inspection_mode: self.inspection_mode,
             send: self.send,
             recv: self.recv,
         }

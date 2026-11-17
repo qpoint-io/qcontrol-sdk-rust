@@ -3,22 +3,24 @@
 //! This module provides types for file operation filtering:
 //! - Events for open/read/write/close operations
 //! - Session configuration for per-file transforms
-//! - State management for tracking data across operations
 
 mod action;
 mod event;
 mod pattern;
 mod session;
-mod state;
 
 // Re-export all public types
-pub use action::{FileAction, FileOpenResult};
-pub use event::{FileCloseEvent, FileOpenEvent, FileReadEvent, FileWriteEvent};
+pub use action::{FileAction, FileOpAction, FileOpenResult};
+pub use event::{
+    FileCloseEvent, FileOpEvent, FileOpKind, FileOpenEvent, FilePolicyClass, FileReadEvent,
+    FileWriteEvent,
+};
 pub use pattern::FilePattern;
 pub use session::{
     FileContext, FileRwConfig, FileSession, FileSessionBuilder, FileTransformFn, SessionState,
 };
-pub use state::{FileState, PluginState};
+
+use crate::state::PluginState;
 
 // Re-export Buffer from parent module for convenience
 pub use crate::buffer::Buffer;
@@ -42,3 +44,6 @@ pub type FileWriteFn = fn(PluginState, &FileWriteEvent) -> FileAction;
 ///
 /// Receives the session state and close event. Called for cleanup.
 pub type FileCloseFn = fn(PluginState, &FileCloseEvent);
+
+/// Callback type for generic path-oriented filesystem operations.
+pub type FileOpFn = fn(&FileOpEvent) -> FileOpAction;

@@ -71,9 +71,7 @@ fn on_http_response_body(state: PluginState, ev: &mut HttpBodyEvent) -> HttpActi
     HttpAction::Pass
 }
 
-export_plugin!(
-    PluginBuilder::new("rust_http_rewrite")
-        .on_http_request(on_http_request)
-        .on_http_response(on_http_response)
-        .on_http_response_body(on_http_response_body)
-);
+export_plugin!(PluginBuilder::new("rust_http_rewrite")
+    .on_http_request(on_http_request)
+    .on_http_response(on_http_response)
+    .on_http_response_body(on_http_response_body));

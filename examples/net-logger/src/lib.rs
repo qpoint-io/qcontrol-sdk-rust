@@ -1,6 +1,6 @@
 //! Net logger plugin - logs all network operations to a file.
 //!
-//! This plugin is useful with `qcontrol wrap`, where wrapped HTTP and HTTPS
+//! This plugin is useful with `qcontrol run`, where instrumented HTTP and HTTPS
 //! traffic is normalized into the network ABI and routed through these
 //! callbacks. Native agent-side net hooks are still under development, but the
 //! current implementation already exercises the same plugin-facing ABI.
@@ -13,7 +13,7 @@ use qcontrol::prelude::*;
 static LOGGER: Logger = Logger::new();
 struct TrackedState;
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[net_logger.rs] initializing...");
     Ok(())
@@ -52,7 +52,7 @@ fn on_net_accept(ev: &AcceptEvent) -> AcceptResult {
     AcceptResult::Session(NetSession::builder().state(TrackedState).build())
 }
 
-fn on_net_tls(_state: PluginState, ev: &TlsEvent) {
+fn on_net_tls(_state: PluginState, ev: &TlsEvent) -> NetPhaseAction {
     LOGGER.log(&format!(
         "[net_logger.rs] tls(fd={}, version={})",
         ev.fd(),
@@ -61,22 +61,25 @@ fn on_net_tls(_state: PluginState, ev: &TlsEvent) {
     if let Some(cipher) = ev.cipher() {
         LOGGER.log(&format!("[net_logger.rs]   cipher={}", cipher));
     }
+    NetPhaseAction::Pass
 }
 
-fn on_net_domain(_state: PluginState, ev: &DomainEvent) {
+fn on_net_domain(_state: PluginState, ev: &DomainEvent) -> NetPhaseAction {
     LOGGER.log(&format!(
         "[net_logger.rs] domain(fd={}, domain={})",
         ev.fd(),
         ev.domain()
     ));
+    NetPhaseAction::Pass
 }
 
-fn on_net_protocol(_state: PluginState, ev: &ProtocolEvent) {
+fn on_net_protocol(_state: PluginState, ev: &ProtocolEvent) -> NetPhaseAction {
     LOGGER.log(&format!(
         "[net_logger.rs] protocol(fd={}, protocol={})",
         ev.fd(),
         ev.protocol()
     ));
+    NetPhaseAction::Pass
 }
 
 fn on_net_send(_state: PluginState, ev: &SendEvent) -> NetAction {

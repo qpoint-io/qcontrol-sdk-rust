@@ -102,7 +102,7 @@ impl<'a> StdinEvent<'a> {
 
     /// Get the child process ID.
     pub fn pid(&self) -> i32 {
-        self.inner.pid
+        pid_to_i32(self.inner.pid)
     }
 
     /// Get the number of bytes being written.
@@ -142,7 +142,7 @@ impl<'a> StdoutEvent<'a> {
 
     /// Get the child process ID.
     pub fn pid(&self) -> i32 {
-        self.inner.pid
+        pid_to_i32(self.inner.pid)
     }
 
     /// Get the number of bytes requested.
@@ -195,7 +195,7 @@ impl<'a> StderrEvent<'a> {
 
     /// Get the child process ID.
     pub fn pid(&self) -> i32 {
-        self.inner.pid
+        pid_to_i32(self.inner.pid)
     }
 
     /// Get the number of bytes requested.
@@ -248,7 +248,7 @@ impl<'a> ExitEvent<'a> {
 
     /// Get the child process ID.
     pub fn pid(&self) -> i32 {
-        self.inner.pid
+        pid_to_i32(self.inner.pid)
     }
 
     /// Get the exit code (only valid if exit_signal is 0).
@@ -265,6 +265,12 @@ impl<'a> ExitEvent<'a> {
     pub fn exited_normally(&self) -> bool {
         self.inner.exit_signal == 0
     }
+}
+
+// `pid_t` is 32-bit or 64-bit depending on platform; widen to i128 before the checked i32 conversion and saturate by sign.
+fn pid_to_i32(pid: ffi::pid_t) -> i32 {
+    let pid = i128::from(pid);
+    i32::try_from(pid).unwrap_or(if pid < 0 { i32::MIN } else { i32::MAX })
 }
 
 /// Iterator over argv/envp arrays.

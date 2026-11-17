@@ -11,6 +11,7 @@ use std::marker::PhantomData;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use crate::buffer::buffer_bytes;
 use crate::ffi;
 use crate::http::context::{HttpCloseReason, HttpContext, HttpExchangeFlags, HttpMessageKind};
 use crate::{Buffer, BufferRef};
@@ -85,19 +86,7 @@ fn bytes_from_ptr_len(ptr: *const c_char, len: usize) -> &'static [u8] {
 
 /// Read the current contents of a host-backed mutable body buffer.
 fn bytes_from_buffer_ptr(ptr: *mut ffi::qcontrol_buffer_t) -> &'static [u8] {
-    if ptr.is_null() {
-        return &[];
-    }
-
-    unsafe {
-        let data = ffi::qcontrol_buffer_data(ptr);
-        let len = ffi::qcontrol_buffer_len(ptr);
-        if data.is_null() || len == 0 {
-            &[]
-        } else {
-            std::slice::from_raw_parts(data as *const u8, len)
-        }
-    }
+    buffer_bytes(ptr)
 }
 
 /// View one contiguous header array returned by the runtime.
@@ -110,6 +99,119 @@ unsafe fn headers_from_raw<'a>(
     } else {
         std::slice::from_raw_parts(ptr, count)
     }
+}
+
+/// Returns the callback table attached to one mutable HTTP header block.
+fn header_ops(
+    raw: *const ffi::qcontrol_http_headers_t,
+) -> Option<&'static ffi::qcontrol_http_headers_ops_t> {
+    unsafe { raw.as_ref()?.ops.as_ref() }
+}
+
+/// Returns the host-owned context pointer attached to one HTTP header block.
+fn header_context(raw: *const ffi::qcontrol_http_headers_t) -> *mut std::ffi::c_void {
+    unsafe {
+        raw.as_ref()
+            .map_or(std::ptr::null_mut(), |headers| headers.context)
+    }
+}
+
+/// Returns the current contiguous header view pointer for one header block.
+fn header_data(raw: *const ffi::qcontrol_http_headers_t) -> *const ffi::qcontrol_http_header_t {
+    let Some(ops) = header_ops(raw) else {
+        return std::ptr::null();
+    };
+    let Some(data_fn) = ops.data else {
+        return std::ptr::null();
+    };
+    unsafe { data_fn(header_context(raw)) }
+}
+
+/// Returns the current header count for one header block.
+fn header_count(raw: *const ffi::qcontrol_http_headers_t) -> usize {
+    let Some(ops) = header_ops(raw) else {
+        return 0;
+    };
+    let Some(count_fn) = ops.count else {
+        return 0;
+    };
+    unsafe { count_fn(header_context(raw)) }
+}
+
+/// Returns the callback table attached to one request head.
+fn request_head_ops(
+    raw: *const ffi::qcontrol_http_request_head_t,
+) -> Option<&'static ffi::qcontrol_http_request_head_ops_t> {
+    unsafe { raw.as_ref()?.ops.as_ref() }
+}
+
+/// Returns the host-owned context pointer attached to one request head.
+fn request_head_context(raw: *const ffi::qcontrol_http_request_head_t) -> *mut std::ffi::c_void {
+    unsafe {
+        raw.as_ref()
+            .map_or(std::ptr::null_mut(), |head| head.context)
+    }
+}
+
+/// Returns the bytes supplied by one request-head accessor pair.
+fn request_head_bytes(
+    raw: *const ffi::qcontrol_http_request_head_t,
+    ptr_fn: impl Fn(
+        &ffi::qcontrol_http_request_head_ops_t,
+    ) -> Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> *const c_char>,
+    len_fn: impl Fn(
+        &ffi::qcontrol_http_request_head_ops_t,
+    ) -> Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> usize>,
+) -> &'static [u8] {
+    let Some(ops) = request_head_ops(raw) else {
+        return &[];
+    };
+    let Some(value_ptr_fn) = ptr_fn(ops) else {
+        return &[];
+    };
+    let Some(value_len_fn) = len_fn(ops) else {
+        return &[];
+    };
+    let ctx = request_head_context(raw);
+    unsafe { bytes_from_ptr_len(value_ptr_fn(ctx), value_len_fn(ctx)) }
+}
+
+/// Returns the callback table attached to one response head.
+fn response_head_ops(
+    raw: *const ffi::qcontrol_http_response_head_t,
+) -> Option<&'static ffi::qcontrol_http_response_head_ops_t> {
+    unsafe { raw.as_ref()?.ops.as_ref() }
+}
+
+/// Returns the host-owned context pointer attached to one response head.
+fn response_head_context(raw: *const ffi::qcontrol_http_response_head_t) -> *mut std::ffi::c_void {
+    unsafe {
+        raw.as_ref()
+            .map_or(std::ptr::null_mut(), |head| head.context)
+    }
+}
+
+/// Returns the bytes supplied by one response-head accessor pair.
+fn response_head_bytes(
+    raw: *const ffi::qcontrol_http_response_head_t,
+    ptr_fn: impl Fn(
+        &ffi::qcontrol_http_response_head_ops_t,
+    ) -> Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> *const c_char>,
+    len_fn: impl Fn(
+        &ffi::qcontrol_http_response_head_ops_t,
+    ) -> Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> usize>,
+) -> &'static [u8] {
+    let Some(ops) = response_head_ops(raw) else {
+        return &[];
+    };
+    let Some(value_ptr_fn) = ptr_fn(ops) else {
+        return &[];
+    };
+    let Some(value_len_fn) = len_fn(ops) else {
+        return &[];
+    };
+    let ctx = response_head_context(raw);
+    unsafe { bytes_from_ptr_len(value_ptr_fn(ctx), value_len_fn(ctx)) }
 }
 
 /// Iterator over HTTP headers.
@@ -164,7 +266,7 @@ impl<'a> HttpHeadersMut<'a> {
 
     /// Return the number of headers currently in the block.
     pub fn count(&self) -> usize {
-        unsafe { ffi::qcontrol_http_headers_count(self.inner) }
+        header_count(self.inner)
     }
 
     /// Return whether the current block contains no headers.
@@ -174,23 +276,13 @@ impl<'a> HttpHeadersMut<'a> {
 
     /// Iterate over the current header view.
     pub fn iter(&self) -> HttpHeaders<'_> {
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(self.inner),
-                ffi::qcontrol_http_headers_count(self.inner),
-            )
-        };
+        let raw = unsafe { headers_from_raw(header_data(self.inner), header_count(self.inner)) };
         HttpHeaders { raw, pos: 0 }
     }
 
     /// Find the first header value whose name matches case-insensitively.
     pub fn get(&self, name: &[u8]) -> Option<&[u8]> {
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(self.inner),
-                ffi::qcontrol_http_headers_count(self.inner),
-            )
-        };
+        let raw = unsafe { headers_from_raw(header_data(self.inner), header_count(self.inner)) };
         for header in raw {
             let header_name = bytes_from_ptr_len(header.name, header.name_len);
             if header_name.eq_ignore_ascii_case(name) {
@@ -208,9 +300,15 @@ impl<'a> HttpHeadersMut<'a> {
 
     /// Append one header without removing existing headers of the same name.
     pub fn add(&mut self, name: &[u8], value: &[u8]) -> bool {
+        let Some(ops) = header_ops(self.inner) else {
+            return false;
+        };
+        let Some(add_fn) = ops.add else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_headers_add(
-                self.inner,
+            add_fn(
+                header_context(self.inner),
                 name.as_ptr() as *const c_char,
                 name.len(),
                 value.as_ptr() as *const c_char,
@@ -226,9 +324,15 @@ impl<'a> HttpHeadersMut<'a> {
 
     /// Replace all headers with the same name with one new header value.
     pub fn set(&mut self, name: &[u8], value: &[u8]) -> bool {
+        let Some(ops) = header_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_fn) = ops.set else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_headers_set(
-                self.inner,
+            set_fn(
+                header_context(self.inner),
                 name.as_ptr() as *const c_char,
                 name.len(),
                 value.as_ptr() as *const c_char,
@@ -244,9 +348,15 @@ impl<'a> HttpHeadersMut<'a> {
 
     /// Remove every header whose name matches case-insensitively.
     pub fn remove(&mut self, name: &[u8]) -> usize {
+        let Some(ops) = header_ops(self.inner) else {
+            return 0;
+        };
+        let Some(remove_fn) = ops.remove else {
+            return 0;
+        };
         unsafe {
-            ffi::qcontrol_http_headers_remove(
-                self.inner,
+            remove_fn(
+                header_context(self.inner),
                 name.as_ptr() as *const c_char,
                 name.len(),
             )
@@ -280,12 +390,7 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Return the raw request-target bytes.
     pub fn raw_target(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_raw_target(self.inner),
-                ffi::qcontrol_http_request_raw_target_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.raw_target, |ops| ops.raw_target_len)
     }
 
     /// Return the raw request-target as UTF-8 when valid.
@@ -295,12 +400,7 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Return the normalized request method.
     pub fn method(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_method(self.inner),
-                ffi::qcontrol_http_request_method_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.method, |ops| ops.method_len)
     }
 
     /// Return the normalized request method as UTF-8 when valid.
@@ -310,9 +410,15 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Replace the request method.
     pub fn set_method(&mut self, value: &[u8]) -> bool {
+        let Some(ops) = request_head_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_method_fn) = ops.set_method else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_request_set_method(
-                self.inner,
+            set_method_fn(
+                request_head_context(self.inner),
                 value.as_ptr() as *const c_char,
                 value.len(),
             ) == 0
@@ -326,12 +432,7 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Return the request scheme when one is available.
     pub fn scheme(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_scheme(self.inner),
-                ffi::qcontrol_http_request_scheme_len(self.inner),
-            )
-        };
+        let bytes = request_head_bytes(self.inner, |ops| ops.scheme, |ops| ops.scheme_len);
         if bytes.is_empty() {
             None
         } else {
@@ -347,9 +448,15 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Replace the request scheme.
     pub fn set_scheme(&mut self, value: &[u8]) -> bool {
+        let Some(ops) = request_head_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_scheme_fn) = ops.set_scheme else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_request_set_scheme(
-                self.inner,
+            set_scheme_fn(
+                request_head_context(self.inner),
                 value.as_ptr() as *const c_char,
                 value.len(),
             ) == 0
@@ -363,12 +470,7 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Return the request authority when one is available.
     pub fn authority(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_authority(self.inner),
-                ffi::qcontrol_http_request_authority_len(self.inner),
-            )
-        };
+        let bytes = request_head_bytes(self.inner, |ops| ops.authority, |ops| ops.authority_len);
         if bytes.is_empty() {
             None
         } else {
@@ -384,9 +486,15 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Replace the request authority.
     pub fn set_authority(&mut self, value: &[u8]) -> bool {
+        let Some(ops) = request_head_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_authority_fn) = ops.set_authority else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_request_set_authority(
-                self.inner,
+            set_authority_fn(
+                request_head_context(self.inner),
                 value.as_ptr() as *const c_char,
                 value.len(),
             ) == 0
@@ -400,12 +508,7 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Return the normalized request path.
     pub fn path(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_path(self.inner),
-                ffi::qcontrol_http_request_path_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.path, |ops| ops.path_len)
     }
 
     /// Return the normalized request path as UTF-8 when valid.
@@ -415,9 +518,15 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Replace the normalized request path.
     pub fn set_path(&mut self, value: &[u8]) -> bool {
+        let Some(ops) = request_head_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_path_fn) = ops.set_path else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_request_set_path(
-                self.inner,
+            set_path_fn(
+                request_head_context(self.inner),
                 value.as_ptr() as *const c_char,
                 value.len(),
             ) == 0
@@ -431,19 +540,25 @@ impl<'a> HttpRequestHead<'a> {
 
     /// Iterate over the current request headers.
     pub fn headers(&self) -> HttpHeaders<'_> {
-        let headers = unsafe { ffi::qcontrol_http_request_headers(self.inner) };
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(headers),
-                ffi::qcontrol_http_headers_count(headers),
-            )
+        let headers = unsafe {
+            self.inner
+                .as_ref()
+                .map(|head| &head.headers as *const _)
+                .unwrap_or(std::ptr::null())
         };
+        let raw = unsafe { headers_from_raw(header_data(headers), header_count(headers)) };
         HttpHeaders { raw, pos: 0 }
     }
 
     /// Return the mutable request header block.
     pub fn headers_mut(&mut self) -> HttpHeadersMut<'_> {
-        unsafe { HttpHeadersMut::from_raw(ffi::qcontrol_http_request_headers(self.inner)) }
+        let headers = unsafe {
+            self.inner
+                .as_mut()
+                .map(|head| &mut head.headers as *mut _)
+                .unwrap_or(std::ptr::null_mut())
+        };
+        unsafe { HttpHeadersMut::from_raw(headers) }
     }
 }
 
@@ -468,12 +583,7 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Return the raw request-target bytes.
     pub fn raw_target(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_raw_target(self.inner),
-                ffi::qcontrol_http_request_raw_target_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.raw_target, |ops| ops.raw_target_len)
     }
 
     /// Return the raw request-target as UTF-8 when valid.
@@ -483,12 +593,7 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Return the normalized request method.
     pub fn method(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_method(self.inner),
-                ffi::qcontrol_http_request_method_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.method, |ops| ops.method_len)
     }
 
     /// Return the normalized request method as UTF-8 when valid.
@@ -498,12 +603,7 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Return the request scheme when one is available.
     pub fn scheme(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_scheme(self.inner),
-                ffi::qcontrol_http_request_scheme_len(self.inner),
-            )
-        };
+        let bytes = request_head_bytes(self.inner, |ops| ops.scheme, |ops| ops.scheme_len);
         if bytes.is_empty() {
             None
         } else {
@@ -519,12 +619,7 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Return the request authority when one is available.
     pub fn authority(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_authority(self.inner),
-                ffi::qcontrol_http_request_authority_len(self.inner),
-            )
-        };
+        let bytes = request_head_bytes(self.inner, |ops| ops.authority, |ops| ops.authority_len);
         if bytes.is_empty() {
             None
         } else {
@@ -540,12 +635,7 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Return the normalized request path.
     pub fn path(&self) -> &[u8] {
-        unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_request_path(self.inner),
-                ffi::qcontrol_http_request_path_len(self.inner),
-            )
-        }
+        request_head_bytes(self.inner, |ops| ops.path, |ops| ops.path_len)
     }
 
     /// Return the normalized request path as UTF-8 when valid.
@@ -555,13 +645,13 @@ impl<'a> HttpRequestHeadRef<'a> {
 
     /// Iterate over the current request headers.
     pub fn headers(&self) -> HttpHeaders<'_> {
-        let headers = unsafe { ffi::qcontrol_http_request_headers(self.inner as *mut _) };
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(headers),
-                ffi::qcontrol_http_headers_count(headers),
-            )
+        let headers = unsafe {
+            self.inner
+                .as_ref()
+                .map(|head| &head.headers as *const _)
+                .unwrap_or(std::ptr::null())
         };
+        let raw = unsafe { headers_from_raw(header_data(headers), header_count(headers)) };
         HttpHeaders { raw, pos: 0 }
     }
 }
@@ -593,17 +683,18 @@ impl<'a> HttpResponseHeadRef<'a> {
 
     /// Return the response status code.
     pub fn status_code(&self) -> u16 {
-        unsafe { ffi::qcontrol_http_response_status_code(self.inner) }
+        let Some(ops) = response_head_ops(self.inner) else {
+            return 0;
+        };
+        let Some(status_code_fn) = ops.status_code else {
+            return 0;
+        };
+        unsafe { status_code_fn(response_head_context(self.inner)) }
     }
 
     /// Return the reason phrase when one is available.
     pub fn reason(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_response_reason(self.inner),
-                ffi::qcontrol_http_response_reason_len(self.inner),
-            )
-        };
+        let bytes = response_head_bytes(self.inner, |ops| ops.reason, |ops| ops.reason_len);
         if bytes.is_empty() {
             None
         } else {
@@ -619,13 +710,13 @@ impl<'a> HttpResponseHeadRef<'a> {
 
     /// Iterate over the current response headers.
     pub fn headers(&self) -> HttpHeaders<'_> {
-        let headers = unsafe { ffi::qcontrol_http_response_headers(self.inner as *mut _) };
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(headers),
-                ffi::qcontrol_http_headers_count(headers),
-            )
+        let headers = unsafe {
+            self.inner
+                .as_ref()
+                .map(|head| &head.headers as *const _)
+                .unwrap_or(std::ptr::null())
         };
+        let raw = unsafe { headers_from_raw(header_data(headers), header_count(headers)) };
         HttpHeaders { raw, pos: 0 }
     }
 }
@@ -645,24 +736,29 @@ impl<'a> HttpResponseHead<'a> {
 
     /// Return the response status code.
     pub fn status_code(&self) -> u16 {
-        unsafe { ffi::qcontrol_http_response_status_code(self.inner) }
+        let Some(ops) = response_head_ops(self.inner) else {
+            return 0;
+        };
+        let Some(status_code_fn) = ops.status_code else {
+            return 0;
+        };
+        unsafe { status_code_fn(response_head_context(self.inner)) }
     }
 
     /// Replace the response status code.
     pub fn set_status_code(&mut self, status_code: u16) {
-        unsafe {
-            ffi::qcontrol_http_response_set_status_code(self.inner, status_code);
-        }
+        let Some(ops) = response_head_ops(self.inner) else {
+            return;
+        };
+        let Some(set_status_code_fn) = ops.set_status_code else {
+            return;
+        };
+        unsafe { set_status_code_fn(response_head_context(self.inner), status_code) };
     }
 
     /// Return the reason phrase when one is available.
     pub fn reason(&self) -> Option<&[u8]> {
-        let bytes = unsafe {
-            bytes_from_ptr_len(
-                ffi::qcontrol_http_response_reason(self.inner),
-                ffi::qcontrol_http_response_reason_len(self.inner),
-            )
-        };
+        let bytes = response_head_bytes(self.inner, |ops| ops.reason, |ops| ops.reason_len);
         if bytes.is_empty() {
             None
         } else {
@@ -678,9 +774,15 @@ impl<'a> HttpResponseHead<'a> {
 
     /// Replace the response reason phrase.
     pub fn set_reason(&mut self, value: &[u8]) -> bool {
+        let Some(ops) = response_head_ops(self.inner) else {
+            return false;
+        };
+        let Some(set_reason_fn) = ops.set_reason else {
+            return false;
+        };
         unsafe {
-            ffi::qcontrol_http_response_set_reason(
-                self.inner,
+            set_reason_fn(
+                response_head_context(self.inner),
                 value.as_ptr() as *const c_char,
                 value.len(),
             ) == 0
@@ -694,19 +796,25 @@ impl<'a> HttpResponseHead<'a> {
 
     /// Iterate over the current response headers.
     pub fn headers(&self) -> HttpHeaders<'_> {
-        let headers = unsafe { ffi::qcontrol_http_response_headers(self.inner) };
-        let raw = unsafe {
-            headers_from_raw(
-                ffi::qcontrol_http_headers_data(headers),
-                ffi::qcontrol_http_headers_count(headers),
-            )
+        let headers = unsafe {
+            self.inner
+                .as_ref()
+                .map(|head| &head.headers as *const _)
+                .unwrap_or(std::ptr::null())
         };
+        let raw = unsafe { headers_from_raw(header_data(headers), header_count(headers)) };
         HttpHeaders { raw, pos: 0 }
     }
 
     /// Return the mutable response header block.
     pub fn headers_mut(&mut self) -> HttpHeadersMut<'_> {
-        unsafe { HttpHeadersMut::from_raw(ffi::qcontrol_http_response_headers(self.inner)) }
+        let headers = unsafe {
+            self.inner
+                .as_mut()
+                .map(|head| &mut head.headers as *mut _)
+                .unwrap_or(std::ptr::null_mut())
+        };
+        unsafe { HttpHeadersMut::from_raw(headers) }
     }
 }
 
@@ -803,6 +911,17 @@ impl<'a> HttpRequestEvent<'a> {
         HttpHeaders { raw, pos: 0 }
     }
 
+    /// Read the incoming headers before any plugin edits, when the host supports it.
+    pub fn original_headers(&self) -> Option<HttpHeaders<'_>> {
+        let get = request_head_ops(self.inner.head)?.original_headers?;
+        let mut count = 0;
+        let raw = unsafe { get(request_head_context(self.inner.head), &mut count) };
+        Some(HttpHeaders {
+            raw: unsafe { headers_from_raw(raw, count) },
+            pos: 0,
+        })
+    }
+
     /// Find the first request header value by ASCII name.
     pub fn header(&self, name: &[u8]) -> Option<&[u8]> {
         let raw = unsafe { headers_from_raw(self.inner.headers, self.inner.header_count) };
@@ -838,9 +957,14 @@ impl<'a> HttpRequestEvent<'a> {
         if self.inner.head.is_null() {
             None
         } else {
-            Some(unsafe {
-                HttpHeadersMut::from_raw(ffi::qcontrol_http_request_headers(self.inner.head))
-            })
+            let headers = unsafe {
+                self.inner
+                    .head
+                    .as_mut()
+                    .map(|head| &mut head.headers as *mut _)
+                    .unwrap_or(std::ptr::null_mut())
+            };
+            Some(unsafe { HttpHeadersMut::from_raw(headers) })
         }
     }
 }
@@ -932,9 +1056,14 @@ impl<'a> HttpResponseEvent<'a> {
         if self.inner.head.is_null() {
             None
         } else {
-            Some(unsafe {
-                HttpHeadersMut::from_raw(ffi::qcontrol_http_response_headers(self.inner.head))
-            })
+            let headers = unsafe {
+                self.inner
+                    .head
+                    .as_mut()
+                    .map(|head| &mut head.headers as *mut _)
+                    .unwrap_or(std::ptr::null_mut())
+            };
+            Some(unsafe { HttpHeadersMut::from_raw(headers) })
         }
     }
 }
@@ -1166,5 +1295,54 @@ impl<'a> HttpExchangeCloseEvent<'a> {
     /// Return the exchange completion flags.
     pub fn flags(&self) -> HttpExchangeFlags {
         HttpExchangeFlags::from_raw(self.inner.flags)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The optional accessor preserves byte lengths and does not substitute callback headers.
+    #[test]
+    fn original_headers_are_optional_and_length_delimited() {
+        unsafe extern "C" fn get(
+            context: *mut std::ffi::c_void,
+            count: *mut usize,
+        ) -> *const ffi::qcontrol_http_header_t {
+            unsafe { *count = 1 };
+            context.cast()
+        }
+        let mut raw: ffi::qcontrol_http_request_event_t = unsafe { std::mem::zeroed() };
+        assert!(unsafe { HttpRequestEvent::from_raw(&mut raw) }
+            .original_headers()
+            .is_none());
+        let mut head: ffi::qcontrol_http_request_head_t = unsafe { std::mem::zeroed() };
+        raw.head = &mut head;
+        assert!(unsafe { HttpRequestEvent::from_raw(&mut raw) }
+            .original_headers()
+            .is_none());
+        let mut ops: ffi::qcontrol_http_request_head_ops_t = unsafe { std::mem::zeroed() };
+        head.ops = &ops;
+        raw.head = &mut head;
+        assert!(unsafe { HttpRequestEvent::from_raw(&mut raw) }
+            .original_headers()
+            .is_none());
+        ops.original_headers = Some(get);
+        let mut header = ffi::qcontrol_http_header_t {
+            name: b"x-key-unused".as_ptr().cast(),
+            name_len: 5,
+            value: b"old\0key-unused".as_ptr().cast(),
+            value_len: 7,
+        };
+        head.context = (&mut header as *mut ffi::qcontrol_http_header_t).cast();
+        head.ops = &ops;
+        raw.head = &mut head;
+        let event = unsafe { HttpRequestEvent::from_raw(&mut raw) };
+        let mut original = event.original_headers().unwrap();
+        let header = original.next().unwrap();
+        assert_eq!(header.name(), b"x-key");
+        assert_eq!(header.value(), b"old\0key");
+        assert!(original.next().is_none());
+        assert_eq!(event.headers().count(), 0);
     }
 }

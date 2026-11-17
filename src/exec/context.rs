@@ -25,7 +25,7 @@ impl<'a> ExecContext<'a> {
 
     /// Get the child process ID.
     pub fn pid(&self) -> i32 {
-        self.inner.pid
+        pid_to_i32(self.inner.pid)
     }
 
     /// Get the executable path.
@@ -55,6 +55,12 @@ impl<'a> ExecContext<'a> {
             _marker: std::marker::PhantomData,
         }
     }
+}
+
+// `pid_t` is 32-bit or 64-bit depending on platform; widen to i128 before the checked i32 conversion and saturate by sign.
+fn pid_to_i32(pid: ffi::pid_t) -> i32 {
+    let pid = i128::from(pid);
+    i32::try_from(pid).unwrap_or(if pid < 0 { i32::MIN } else { i32::MAX })
 }
 
 /// Iterator over argv arrays.

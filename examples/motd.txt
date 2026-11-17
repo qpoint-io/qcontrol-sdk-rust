@@ -2,7 +2,7 @@ Welcome to the qcontrol Rust SDK Dev Environment!
 
 Available tools:
   - rustc / cargo (Rust compiler and package manager)
-  - qcontrol (Process wrapping and plugin bundling)
+  - qcontrol (Process instrumentation and plugin loading)
   - claude (Anthropic Claude Code CLI)
 
 To build the examples:
@@ -14,13 +14,7 @@ To build plugins by type:
   make build-exec
   make build-net
 
-To bundle plugins by type:
-  cd examples
-  make bundle-file
-  make bundle-exec
-  make bundle-net
-
 To test the zero-trust AI demo:
   echo "super_secret_key" > /tmp/secret.txt
   ARCH=$(uname -m)-$(uname -s | tr A-Z a-z)
-  QCONTROL_PLUGINS=./access-control/dist/access-control-$ARCH.so qcontrol wrap -- claude -p "Read /tmp/secret.txt"
+  QCONTROL_PLUGINS=./access-control/dist/access-control-$ARCH.so qcontrol run -- claude -p "Read /tmp/secret.txt"

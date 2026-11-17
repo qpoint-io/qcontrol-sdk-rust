@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["file-logger", "access-control", "byte-counter", "content-filter", "text-transform", "exec-logger", "net-logger", "net-transform", "http-logger", "http-rewrite"]
+members = ["file-logger", "access-control", "byte-counter", "content-filter", "text-transform", "exec-logger", "net-logger", "net-transform", "netstat-observe", "http-logger", "http-rewrite", "sse-rewrite", "websocket-rewrite"]
 
 [workspace.dependencies]
 qcontrol = { path = ".." }

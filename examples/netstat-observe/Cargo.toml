@@ -1,0 +1,11 @@
+[package]
+name = "netstat-observe"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "netstat_observe"
+crate-type = ["cdylib"]
+
+[dependencies]
+qcontrol = { workspace = true }

@@ -14,9 +14,19 @@ mod bindings {
 }
 
 // Re-export common types
+pub use bindings::qcontrol_buffer_ops_t;
 pub use bindings::qcontrol_buffer_t;
+pub use bindings::qcontrol_netstat_connection_t;
+pub use bindings::qcontrol_netstat_fn;
+pub use bindings::qcontrol_netstat_protocol_t;
+pub use bindings::qcontrol_netstat_protocol_t_QCONTROL_NETSTAT_PROTO_TCP as QCONTROL_NETSTAT_PROTO_TCP;
+pub use bindings::qcontrol_netstat_protocol_t_QCONTROL_NETSTAT_PROTO_UDP as QCONTROL_NETSTAT_PROTO_UDP;
+pub use bindings::qcontrol_netstat_snapshot_t;
+pub use bindings::qcontrol_netstat_traffic_t;
 pub use bindings::qcontrol_plugin_t;
-pub use bindings::QCONTROL_PLUGIN_VERSION;
+pub use bindings::qcontrol_string_view_t;
+pub use bindings::{gid_t, pid_t, uid_t};
+pub use bindings::{QCONTROL_CONFIG_INVALID, QCONTROL_CONFIG_OK, QCONTROL_PLUGIN_VERSION};
 
 // ============================================================================
 // File types
@@ -26,8 +36,31 @@ pub use bindings::qcontrol_file_action_t;
 pub use bindings::qcontrol_file_action_type_t;
 pub use bindings::qcontrol_file_close_event_t;
 pub use bindings::qcontrol_file_ctx_t;
+pub use bindings::qcontrol_file_op_action__bindgen_ty_1;
+pub use bindings::qcontrol_file_op_action_t;
+pub use bindings::qcontrol_file_op_action_type_t;
+pub use bindings::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_BLOCK;
+pub use bindings::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_BLOCK_ERRNO;
+pub use bindings::qcontrol_file_op_action_type_t_QCONTROL_FILE_OP_ACTION_PASS;
+pub use bindings::qcontrol_file_op_event_t;
+pub use bindings::qcontrol_file_op_kind_t;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_ACCESS;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_CHMOD;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_CHOWN;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_LINK;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_MKDIR;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_OPENDIR;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_READLINK;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_RENAME;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_RMDIR;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_STAT;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_SYMLINK;
+pub use bindings::qcontrol_file_op_kind_t_QCONTROL_FILE_OP_UNLINK;
 pub use bindings::qcontrol_file_open_event_t;
 pub use bindings::qcontrol_file_pattern_t;
+pub use bindings::qcontrol_file_policy_class_t;
+pub use bindings::qcontrol_file_policy_class_t_QCONTROL_FILE_POLICY_CLASS_READ;
+pub use bindings::qcontrol_file_policy_class_t_QCONTROL_FILE_POLICY_CLASS_WRITE;
 pub use bindings::qcontrol_file_read_event_t;
 pub use bindings::qcontrol_file_rw_config_t;
 pub use bindings::qcontrol_file_session_t;
@@ -71,7 +104,11 @@ pub use bindings::qcontrol_net_connect_event_t;
 pub use bindings::qcontrol_net_ctx_t;
 pub use bindings::qcontrol_net_direction_t;
 pub use bindings::qcontrol_net_domain_event_t;
+pub use bindings::qcontrol_net_inspection_mode_t;
 pub use bindings::qcontrol_net_pattern_t;
+pub use bindings::qcontrol_net_phase_action__bindgen_ty_1;
+pub use bindings::qcontrol_net_phase_action_t;
+pub use bindings::qcontrol_net_phase_action_type_t;
 pub use bindings::qcontrol_net_protocol_event_t;
 pub use bindings::qcontrol_net_recv_event_t;
 pub use bindings::qcontrol_net_rw_config_t;
@@ -86,10 +123,22 @@ pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_BLOCK_ERRNO;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_PASS;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_SESSION;
 pub use bindings::qcontrol_net_action_type_t_QCONTROL_NET_ACTION_STATE;
+pub use bindings::qcontrol_net_inspection_mode_t_QCONTROL_NET_INSPECTION_DEFAULT;
+pub use bindings::qcontrol_net_inspection_mode_t_QCONTROL_NET_INSPECTION_INTERCEPT;
+pub use bindings::qcontrol_net_inspection_mode_t_QCONTROL_NET_INSPECTION_TUNNEL;
+pub use bindings::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_BLOCK;
+pub use bindings::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_BLOCK_ERRNO;
+pub use bindings::qcontrol_net_phase_action_type_t_QCONTROL_NET_PHASE_ACTION_PASS;
 
 // Net direction constants
 pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_INBOUND;
 pub use bindings::qcontrol_net_direction_t_QCONTROL_NET_OUTBOUND;
+
+// ============================================================================
+// Process types
+// ============================================================================
+pub use bindings::qcontrol_process_identity_t;
+pub use bindings::qcontrol_process_lineage_entry_t;
 
 // ============================================================================
 // HTTP types
@@ -105,12 +154,15 @@ pub use bindings::qcontrol_http_ctx_t;
 pub use bindings::qcontrol_http_exchange_close_event_t;
 pub use bindings::qcontrol_http_exchange_flag_t;
 pub use bindings::qcontrol_http_header_t;
+pub use bindings::qcontrol_http_headers_ops_t;
 pub use bindings::qcontrol_http_headers_t;
 pub use bindings::qcontrol_http_message_done_event_t;
 pub use bindings::qcontrol_http_message_kind_t;
 pub use bindings::qcontrol_http_request_event_t;
+pub use bindings::qcontrol_http_request_head_ops_t;
 pub use bindings::qcontrol_http_request_head_t;
 pub use bindings::qcontrol_http_response_event_t;
+pub use bindings::qcontrol_http_response_head_ops_t;
 pub use bindings::qcontrol_http_response_head_t;
 pub use bindings::qcontrol_http_trailers_event_t;
 pub use bindings::qcontrol_http_version_t;
@@ -145,6 +197,7 @@ pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_ABORTED;
 pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_COMPLETE;
 pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_CONNECTION_CLOSED;
 pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_PARSE_ERROR;
+pub use bindings::qcontrol_http_close_reason_t_QCONTROL_HTTP_CLOSE_UPGRADED;
 
 // HTTP exchange flag constants
 pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_NONE;
@@ -152,49 +205,39 @@ pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_REQU
 pub use bindings::qcontrol_http_exchange_flag_t_QCONTROL_HTTP_EXCHANGE_FLAG_RESPONSE_DONE;
 
 // ============================================================================
-// Buffer functions (implemented by agent)
+// Stream types
 // ============================================================================
-pub use bindings::qcontrol_buffer_append;
-pub use bindings::qcontrol_buffer_clear;
-pub use bindings::qcontrol_buffer_contains;
-pub use bindings::qcontrol_buffer_data;
-pub use bindings::qcontrol_buffer_ends_with;
-pub use bindings::qcontrol_buffer_index_of;
-pub use bindings::qcontrol_buffer_insert_at;
-pub use bindings::qcontrol_buffer_len;
-pub use bindings::qcontrol_buffer_prepend;
-pub use bindings::qcontrol_buffer_remove;
-pub use bindings::qcontrol_buffer_remove_all;
-pub use bindings::qcontrol_buffer_remove_range;
-pub use bindings::qcontrol_buffer_replace;
-pub use bindings::qcontrol_buffer_replace_all;
-pub use bindings::qcontrol_buffer_set;
-pub use bindings::qcontrol_buffer_starts_with;
+pub use bindings::qcontrol_stream_action_t;
+pub use bindings::qcontrol_stream_action_type_t;
+pub use bindings::qcontrol_stream_ctx_t;
+pub use bindings::qcontrol_stream_direction_t;
+pub use bindings::qcontrol_stream_protocol_t;
 
-// HTTP helper functions (implemented by the host/runtime)
-pub use bindings::qcontrol_http_headers_add;
-pub use bindings::qcontrol_http_headers_count;
-pub use bindings::qcontrol_http_headers_data;
-pub use bindings::qcontrol_http_headers_remove;
-pub use bindings::qcontrol_http_headers_set;
-pub use bindings::qcontrol_http_request_authority;
-pub use bindings::qcontrol_http_request_authority_len;
-pub use bindings::qcontrol_http_request_headers;
-pub use bindings::qcontrol_http_request_method;
-pub use bindings::qcontrol_http_request_method_len;
-pub use bindings::qcontrol_http_request_path;
-pub use bindings::qcontrol_http_request_path_len;
-pub use bindings::qcontrol_http_request_raw_target;
-pub use bindings::qcontrol_http_request_raw_target_len;
-pub use bindings::qcontrol_http_request_scheme;
-pub use bindings::qcontrol_http_request_scheme_len;
-pub use bindings::qcontrol_http_request_set_authority;
-pub use bindings::qcontrol_http_request_set_method;
-pub use bindings::qcontrol_http_request_set_path;
-pub use bindings::qcontrol_http_request_set_scheme;
-pub use bindings::qcontrol_http_response_headers;
-pub use bindings::qcontrol_http_response_reason;
-pub use bindings::qcontrol_http_response_reason_len;
-pub use bindings::qcontrol_http_response_set_reason;
-pub use bindings::qcontrol_http_response_set_status_code;
-pub use bindings::qcontrol_http_response_status_code;
+pub use bindings::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_BLOCK;
+pub use bindings::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_PASS;
+pub use bindings::qcontrol_stream_action_type_t_QCONTROL_STREAM_ACTION_STATE;
+pub use bindings::qcontrol_stream_direction_t_QCONTROL_STREAM_CLIENT_TO_SERVER;
+pub use bindings::qcontrol_stream_direction_t_QCONTROL_STREAM_DIRECTION_UNKNOWN;
+pub use bindings::qcontrol_stream_direction_t_QCONTROL_STREAM_SERVER_TO_CLIENT;
+pub use bindings::qcontrol_stream_protocol_t_QCONTROL_STREAM_PROTOCOL_SSE;
+pub use bindings::qcontrol_stream_protocol_t_QCONTROL_STREAM_PROTOCOL_WEBSOCKET;
+
+// ============================================================================
+// SSE types
+// ============================================================================
+pub use bindings::qcontrol_sse_close_event_t;
+pub use bindings::qcontrol_sse_event_ops_t;
+pub use bindings::qcontrol_sse_event_record_t;
+pub use bindings::qcontrol_sse_event_t;
+pub use bindings::qcontrol_sse_open_event_t;
+
+// ============================================================================
+// WebSocket types
+// ============================================================================
+pub use bindings::qcontrol_websocket_close_event_t;
+pub use bindings::qcontrol_websocket_message_event_t;
+pub use bindings::qcontrol_websocket_message_type_t;
+pub use bindings::qcontrol_websocket_open_event_t;
+
+pub use bindings::qcontrol_websocket_message_type_t_QCONTROL_WEBSOCKET_MESSAGE_BINARY;
+pub use bindings::qcontrol_websocket_message_type_t_QCONTROL_WEBSOCKET_MESSAGE_TEXT;

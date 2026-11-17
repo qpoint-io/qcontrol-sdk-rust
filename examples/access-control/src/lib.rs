@@ -7,7 +7,7 @@ use qcontrol::prelude::*;
 
 static LOGGER: Logger = Logger::new();
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[access_control.rs] initializing - blocking /tmp/secret*");
     Ok(())

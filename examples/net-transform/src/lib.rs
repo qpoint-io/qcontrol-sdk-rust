@@ -1,6 +1,6 @@
 //! Net transform plugin - demonstrates modifying plaintext network traffic.
 //!
-//! This example is intended for `qcontrol wrap`.
+//! This example is intended for `qcontrol run`.
 //! It rewrites simple text responses by replacing:
 //!   "hello"  -> "hullo"
 //!   "server" -> "client"
@@ -15,7 +15,7 @@ use qcontrol::prelude::*;
 
 static LOGGER: Logger = Logger::new();
 
-fn init() -> Result<(), Error> {
+fn init(_config: &str) -> Result<(), BoxError> {
     LOGGER.init();
     LOGGER.log("[net_transform.rs] initializing...");
     Ok(())
@@ -46,12 +46,13 @@ fn on_net_connect(ev: &ConnectEvent) -> ConnectResult {
     )
 }
 
-fn on_net_domain(_state: PluginState, ev: &DomainEvent) {
+fn on_net_domain(_state: PluginState, ev: &DomainEvent) -> NetPhaseAction {
     LOGGER.log(&format!(
         "[net_transform.rs] domain(fd={}, domain={})",
         ev.fd(),
         ev.domain()
     ));
+    NetPhaseAction::Pass
 }
 
 fn on_net_close(_state: PluginState, ev: &NetCloseEvent) {

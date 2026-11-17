@@ -2,9 +2,9 @@
 //!
 //! Lifetime-bound wrappers around C event structures.
 
-use std::ffi::CStr;
-
 use crate::ffi;
+use crate::net::{str_from_ptr_len, str_opt_from_ptr_len};
+use crate::process::ProcessIdentity;
 
 /// Event for outbound connection (connect).
 pub struct ConnectEvent<'a> {
@@ -28,15 +28,7 @@ impl<'a> ConnectEvent<'a> {
 
     /// Get the destination address (IP string).
     pub fn dst_addr(&self) -> &str {
-        if self.inner.dst_addr.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.dst_addr)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.dst_addr, self.inner.dst_addr_len)
     }
 
     /// Get the destination port.
@@ -46,15 +38,7 @@ impl<'a> ConnectEvent<'a> {
 
     /// Get the local source address (may be empty if not bound).
     pub fn src_addr(&self) -> &str {
-        if self.inner.src_addr.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.src_addr)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.src_addr, self.inner.src_addr_len)
     }
 
     /// Get the local source port (0 if not bound).
@@ -72,6 +56,11 @@ impl<'a> ConnectEvent<'a> {
     /// Check if the connect succeeded.
     pub fn succeeded(&self) -> bool {
         self.inner.result == 0
+    }
+
+    /// Get the originating process identity and executable lineage.
+    pub fn process(&self) -> ProcessIdentity<'a> {
+        unsafe { ProcessIdentity::from_ref(&self.inner.process) }
     }
 }
 
@@ -102,15 +91,7 @@ impl<'a> AcceptEvent<'a> {
 
     /// Get the remote client address.
     pub fn src_addr(&self) -> &str {
-        if self.inner.src_addr.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.src_addr)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.src_addr, self.inner.src_addr_len)
     }
 
     /// Get the remote client port.
@@ -120,15 +101,7 @@ impl<'a> AcceptEvent<'a> {
 
     /// Get the local server address.
     pub fn dst_addr(&self) -> &str {
-        if self.inner.dst_addr.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.dst_addr)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.dst_addr, self.inner.dst_addr_len)
     }
 
     /// Get the local server port.
@@ -171,24 +144,12 @@ impl<'a> TlsEvent<'a> {
 
     /// Get the TLS version (e.g., "TLSv1.2", "TLSv1.3").
     pub fn version(&self) -> &str {
-        if self.inner.version.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.version)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.version, self.inner.version_len)
     }
 
     /// Get the cipher suite (may be empty).
     pub fn cipher(&self) -> Option<&str> {
-        if self.inner.cipher.is_null() || self.inner.cipher_len == 0 {
-            None
-        } else {
-            unsafe { CStr::from_ptr(self.inner.cipher).to_str().ok() }
-        }
+        str_opt_from_ptr_len(self.inner.cipher, self.inner.cipher_len)
     }
 }
 
@@ -214,15 +175,7 @@ impl<'a> DomainEvent<'a> {
 
     /// Get the domain name.
     pub fn domain(&self) -> &str {
-        if self.inner.domain.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.domain)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.domain, self.inner.domain_len)
     }
 }
 
@@ -248,15 +201,7 @@ impl<'a> ProtocolEvent<'a> {
 
     /// Get the protocol identifier (e.g., "http/1.1", "h2").
     pub fn protocol(&self) -> &str {
-        if self.inner.protocol.is_null() {
-            ""
-        } else {
-            unsafe {
-                CStr::from_ptr(self.inner.protocol)
-                    .to_str()
-                    .unwrap_or("<invalid utf8>")
-            }
-        }
+        str_from_ptr_len(self.inner.protocol, self.inner.protocol_len)
     }
 }
 
