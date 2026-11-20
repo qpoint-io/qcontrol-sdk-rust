@@ -16,16 +16,44 @@ mod bindings {
 // Re-export common types
 pub use bindings::qcontrol_buffer_ops_t;
 pub use bindings::qcontrol_buffer_t;
-pub use bindings::qcontrol_netstat_connection_t;
+pub use bindings::qcontrol_netstat_endpoint_t;
+pub use bindings::qcontrol_netstat_event_t;
 pub use bindings::qcontrol_netstat_fn;
 pub use bindings::qcontrol_netstat_protocol_t;
 pub use bindings::qcontrol_netstat_protocol_t_QCONTROL_NETSTAT_PROTO_TCP as QCONTROL_NETSTAT_PROTO_TCP;
 pub use bindings::qcontrol_netstat_protocol_t_QCONTROL_NETSTAT_PROTO_UDP as QCONTROL_NETSTAT_PROTO_UDP;
-pub use bindings::qcontrol_netstat_snapshot_t;
-pub use bindings::qcontrol_netstat_traffic_t;
 pub use bindings::qcontrol_plugin_t;
 pub use bindings::qcontrol_string_view_t;
 pub use bindings::{gid_t, pid_t, uid_t};
+pub use bindings::{
+    qcontrol_netstat_addr_family_t_QCONTROL_NETSTAT_ADDR_IPV4 as QCONTROL_NETSTAT_ADDR_IPV4,
+    qcontrol_netstat_addr_family_t_QCONTROL_NETSTAT_ADDR_IPV6 as QCONTROL_NETSTAT_ADDR_IPV6,
+    qcontrol_netstat_addr_family_t_QCONTROL_NETSTAT_ADDR_UNSPEC as QCONTROL_NETSTAT_ADDR_UNSPEC,
+    qcontrol_netstat_direction_t_QCONTROL_NETSTAT_DIR_RECV as QCONTROL_NETSTAT_DIR_RECV,
+    qcontrol_netstat_direction_t_QCONTROL_NETSTAT_DIR_SEND as QCONTROL_NETSTAT_DIR_SEND,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_CONNECTED as QCONTROL_NETSTAT_EVENT_CONNECTED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_CONNECTING as QCONTROL_NETSTAT_EVENT_CONNECTING,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_CONNECT_ABANDONED as QCONTROL_NETSTAT_EVENT_CONNECT_ABANDONED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_CONNECT_FAILED as QCONTROL_NETSTAT_EVENT_CONNECT_FAILED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_ENDED as QCONTROL_NETSTAT_EVENT_ENDED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_LOCAL_ENDPOINT as QCONTROL_NETSTAT_EVENT_LOCAL_ENDPOINT,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_LOSSES as QCONTROL_NETSTAT_EVENT_LOSSES,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_NAMES_CLOSED as QCONTROL_NETSTAT_EVENT_NAMES_CLOSED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_OPENED as QCONTROL_NETSTAT_EVENT_OPENED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_PEER_ENDPOINT as QCONTROL_NETSTAT_EVENT_PEER_ENDPOINT,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_PROCESS_ARMED as QCONTROL_NETSTAT_EVENT_PROCESS_ARMED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_PROCESS_ENDED as QCONTROL_NETSTAT_EVENT_PROCESS_ENDED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_STOPPED as QCONTROL_NETSTAT_EVENT_STOPPED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_TRANSFERRED as QCONTROL_NETSTAT_EVENT_TRANSFERRED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_TRANSFER_FAILED as QCONTROL_NETSTAT_EVENT_TRANSFER_FAILED,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_UNKNOWN as QCONTROL_NETSTAT_EVENT_UNKNOWN,
+    qcontrol_netstat_event_type_t_QCONTROL_NETSTAT_EVENT_WATERMARK as QCONTROL_NETSTAT_EVENT_WATERMARK,
+    qcontrol_netstat_instance_end_t_QCONTROL_NETSTAT_INSTANCE_CLOSED as QCONTROL_NETSTAT_INSTANCE_CLOSED,
+    qcontrol_netstat_instance_end_t_QCONTROL_NETSTAT_INSTANCE_REPLACED as QCONTROL_NETSTAT_INSTANCE_REPLACED,
+    qcontrol_netstat_unknown_cause_t_QCONTROL_NETSTAT_UNKNOWN_RECORDS_LOST as QCONTROL_NETSTAT_UNKNOWN_RECORDS_LOST,
+    QCONTROL_NETSTAT_EVENT_HAS_PEER, QCONTROL_NETSTAT_EVENT_LATE,
+    QCONTROL_NETSTAT_EVENT_NAME_NOT_OPEN, QCONTROL_NETSTAT_EVENT_PREEXISTING,
+};
 pub use bindings::{QCONTROL_CONFIG_INVALID, QCONTROL_CONFIG_OK, QCONTROL_PLUGIN_VERSION};
 
 // ============================================================================

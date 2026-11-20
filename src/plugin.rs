@@ -583,10 +583,11 @@ impl PluginBuilder {
         self
     }
 
-    /// Set the netstat snapshot callback.
+    /// Set the netstat event-batch callback.
     ///
-    /// Called with one read-only snapshot. The snapshot is valid only for
-    /// the call.
+    /// Called with a batch of typed events in the order the host decided
+    /// them. The batch is valid only for the call and is never empty. When
+    /// batches arrive is arbitrary; do not rely on it.
     pub const fn on_netstat(mut self, f: NetstatFn) -> Self {
         self.on_netstat = Some(f);
         self
@@ -799,7 +800,7 @@ impl PluginBuilder {
         self.on_websocket_close
     }
 
-    /// Get the netstat snapshot callback.
+    /// Get the netstat event-batch callback.
     pub const fn get_on_netstat(&self) -> Option<NetstatFn> {
         self.on_netstat
     }
@@ -1767,16 +1768,17 @@ macro_rules! export_plugin {
         }
 
         extern "C" fn __qcontrol_netstat_wrapper(
-            snapshot: *const $crate::ffi::qcontrol_netstat_snapshot_t,
+            events: *const $crate::ffi::qcontrol_netstat_event_t,
+            count: usize,
         ) {
             let builder = get_builder();
             if let Some(f) = builder.get_on_netstat() {
-                if snapshot.is_null() {
+                // The host keeps the batch alive until this wrapper returns.
+                let batch = unsafe { $crate::netstat::NetstatEvents::from_raw(events, count) };
+                if batch.is_empty() {
                     return;
                 }
-                // The host keeps the snapshot alive until this wrapper returns.
-                let ev = unsafe { $crate::netstat::NetstatSnapshot::from_raw(snapshot) };
-                f(&ev);
+                f(&batch);
             }
         }
 

@@ -56,7 +56,7 @@
 //! - **on_net_close** - Called when connection is closed
 //!
 //! ## Netstat
-//! - **on_netstat** - Called with one measurement snapshot of socket traffic
+//! - **on_netstat** - Called with batches of typed socket events
 //!
 //! # Sessions and State
 //!
@@ -144,8 +144,8 @@ pub use exec::{
     ExitEvent, StderrEvent, StdinEvent, StdoutEvent,
 };
 
-// Re-export netstat snapshot types at top level for convenience
-pub use netstat::{NetstatConnection, NetstatFn, NetstatProtocol, NetstatSnapshot, NetstatTraffic};
+// Re-export netstat event types at top level for convenience
+pub use netstat::{NetstatEvent, NetstatEventKind, NetstatEvents, NetstatFn, NetstatProtocol};
 
 // Re-export net module types at top level for convenience
 pub use net::{
@@ -206,9 +206,9 @@ pub mod prelude {
     };
     pub use crate::process::{ProcessIdentity, ProcessLineageEntry};
 
-    // Netstat snapshot callback
+    // Netstat event callback
     pub use crate::netstat::{
-        NetstatConnection, NetstatFn, NetstatProtocol, NetstatSnapshot, NetstatTraffic,
+        NetstatEvent, NetstatEventKind, NetstatEvents, NetstatFn, NetstatProtocol,
     };
 
     // HTTP types
