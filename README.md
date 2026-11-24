@@ -59,11 +59,29 @@ export_plugin!(
 );
 ```
 
-Build and run:
+Build the plugin, then list it in a behavior's `plugins` in `config.yaml`:
 
 ```bash
 cargo build --release
-qcontrol run --plugins ./target/release/libhello_plugin.so -- cat /etc/passwd
+```
+
+```yaml
+behaviors:
+  hello:
+    file:
+      enabled: true
+    plugins:
+      - name: hello-plugin
+        path: /absolute/path/to/target/release/libhello_plugin.so
+```
+
+A behavior that loads a path plugin states the surfaces it uses; this plugin
+hooks file opens, so the behavior sets `file.enabled`.
+
+Run a command with that behavior:
+
+```bash
+qcontrol run --behavior hello -- cat /etc/passwd
 ```
 
 That's it. Your plugin now intercepts every file open in the instrumented process.
@@ -1068,7 +1086,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-# cdylib: shared library for dynamic loading via --plugins / QCONTROL_PLUGINS
+# cdylib: shared library loaded by qcontrol
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -1274,13 +1292,19 @@ Output location:
 
 ## Running Plugins
 
-Run plugins by passing built shared libraries to `qcontrol run --plugins`:
+List built shared libraries by `name` and `path` under a behavior's `plugins`
+in `config.yaml`, then select the behavior with `qcontrol run --behavior`:
+
+```yaml
+behaviors:
+  my-plugins:
+    plugins:
+      - name: my-plugin
+        path: /absolute/path/to/target/release/libmy_plugin.so
+```
 
 ```bash
-qcontrol run --plugins ./target/release/libmy_plugin.so -- ./target
-
-# Multiple plugins
-qcontrol run --plugins ./logger.so,./blocker.so -- ./target
+qcontrol run --behavior my-plugins -- ./target
 ```
 
 The lower-level hosts also honor `QCONTROL_PLUGINS` for comma-separated plugin library paths:
